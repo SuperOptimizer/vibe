@@ -24,25 +24,25 @@
 #if __STDC__ && __STDC_VERSION__ >= 199901L /* Attempt to load stdint.h. */
 #include <stdint.h>
 #define u8_TYPE uint8_t   /* Yes, I know that these types are optional. */
-#define RV_U16_TYPE uint16_t /* They *usually* exist. Regardless, rv isn't */
+#define u16_TYPE uint16_t /* They *usually* exist. Regardless, rv isn't */
 #define RV_S32_TYPE int32_t  /* meant to be run on systems with */
 #define u32_TYPE uint32_t /* CHAR_BIT != 8 or other weird integer specs. */
 #else
 #ifdef __UINT8_TYPE__ /* If these are here, we might as well use them. */
 #define u8_TYPE __UINT8_TYPE__
-#define RV_U16_TYPE __UINT16_TYPE__
+#define u16_TYPE __UINT16_TYPE__
 #define RV_S32_TYPE __INT32_TYPE__
 #define u32_TYPE __UINT32_TYPE__
 #else
 #define u8_TYPE unsigned char   /* Assumption: CHAR_BIT == 8 */
-#define RV_U16_TYPE unsigned short /* Assumption: sizeof(ushort) == 2 */
+#define u16_TYPE unsigned short /* Assumption: sizeof(ushort) == 2 */
 #define RV_S32_TYPE signed int     /* Assumption: sizeof(sint) == 4 */
 #define u32_TYPE unsigned int   /* Assumption: sizeof(uint) == 4 */
 #endif /* (slight) deviations from c89. Sorry {TI, Cray, DEC, et. al.} */
 #endif /* All I want for Christmas is C89 with stdint.h */
 
 typedef u8_TYPE u8;
-typedef RV_U16_TYPE rv_u16;
+typedef u16_TYPE u16;
 typedef RV_S32_TYPE rv_s32;
 typedef u32_TYPE u32;
 

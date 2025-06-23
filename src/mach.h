@@ -4,9 +4,6 @@
 #include "hw/clint.h"
 #include "hw/uart.h"
 #include "hw/rtc.h"
-#include "hw/virtio_net.h"
-#include "hw/virtio_blk.h"
-#include "hw/virtio_rng.h"
 
 #define MACH_RAM_BASE 0x80000000UL
 #define MACH_RAM_SIZE (1024UL * 1024UL * 128UL) /* 128MiB of ram */
@@ -20,6 +17,7 @@
 #define MACH_VIRTIO0_BASE 0x10001000UL /* virtio-net base address */
 #define MACH_VIRTIO1_BASE 0x10002000UL /* virtio-blk base address */
 #define MACH_VIRTIO2_BASE 0x10003000UL /* virtio-rng base address */
+#define MACH_NVME0_BASE 0x10004000UL   /* NVMe controller base address */
 
 typedef struct mach {
   rv *cpu;
@@ -28,9 +26,6 @@ typedef struct mach {
   rv_clint clint0;
   rv_uart uart0, uart1;
   rv_rtc rtc0;
-  virtio_net vnet0;
-  virtio_blk vblk0;
-  virtio_rng vrng0;
 } mach;
 
 /* machine functions */

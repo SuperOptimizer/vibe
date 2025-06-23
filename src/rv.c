@@ -433,14 +433,14 @@ void rv_endcvt(u8 *in, u8 *out, u32 width, u32 is_store) {
   if (!is_store && width == 1)
     *out = in[0];
   else if (!is_store && width == 2)
-    *((rv_u16 *)out) = (rv_u16)(in[0] << 0) | (rv_u16)(in[1] << 8);
+    *((u16 *)out) = (u16)in[0] | ((u16)in[1] << 8);
   else if (!is_store && width == 4)
-    *((u32 *)out) = (u32)(in[0] << 0) | (u32)(in[1] << 8) |
-                    (u32)(in[2] << 16) | (u32)(in[3] << 24);
+    *((u32 *)out) = (u32)in[0] | ((u32)in[1] << 8) |
+                    ((u32)in[2] << 16) | (((u32)in[3]) << 24);
   else if (width == 1)
     out[0] = *in;
   else if (width == 2)
-    out[0] = *(rv_u16 *)in >> 0 & 0xFF, out[1] = (*(rv_u16 *)in >> 8);
+    out[0] = *(u16 *)in >> 0 & 0xFF, out[1] = (*(u16 *)in >> 8);
   else
     out[0] = *(u32 *)in >> 0 & 0xFF, out[1] = *(u32 *)in >> 8 & 0xFF,
         out[2] = *(u32 *)in >> 16 & 0xFF, out[3] = *(u32 *)in >> 24 & 0xFF;
@@ -496,6 +496,10 @@ error:
 
 /* service interrupts */
 static u32 rv_service(rv *cpu) {
+  static u32 last_mip = 0;
+  if (cpu->csr.mip != last_mip) {
+    last_mip = cpu->csr.mip;
+  }
   u32 iidx /* interrupt number */, d /* delegated privilege */;
   for (iidx = 12; iidx > 0; iidx--) {
     /* highest -> lowest priority */
@@ -511,6 +515,32 @@ static u32 rv_service(rv *cpu) {
 /* single step */
 u32 rv_step(rv *cpu) {
   u32 i, tval, err = rv_if(cpu, &i, &tval); /* fetch instruction into i */
+
+  
+  /* Track if we're in a tight loop */
+  static u32 last_pc = 0;
+  static int same_pc_count = 0;
+  static u32 loop_locations[5] = {0};
+  static int loop_idx = 0;
+  
+  if (cpu->pc == last_pc) {
+    if (++same_pc_count == 1000) {
+      same_pc_count = 0;
+    }
+  } else {
+    last_pc = cpu->pc;
+    same_pc_count = 0;
+    
+    /* Track short loops */
+    for (int j = 0; j < 5; j++) {
+      if (loop_locations[j] == cpu->pc) {
+        break;
+      }
+    }
+    loop_locations[loop_idx] = cpu->pc;
+    loop_idx = (loop_idx + 1) % 5;
+  }
+  
   if (!++cpu->csr.cycle)
     cpu->csr.cycleh++; /* add to cycle,cycleh with carry */
   if (err)

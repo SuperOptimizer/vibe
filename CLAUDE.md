@@ -56,6 +56,7 @@ The emulator has a modular architecture with clear separation of concerns:
 - **virtio-net**: Network device for Ethernet communication (tap interface)
 - **virtio-blk**: Block device for disk storage access
 - **virtio-rng**: Random number generator for kernel entropy
+- **NVMe**: NVMe 1.4 storage controller with admin and I/O queue support
 
 ### Memory Map
 

@@ -7,9 +7,6 @@
 #include "hw/plic.h"
 #include "hw/uart.h"
 #include "hw/rtc.h"
-#include "hw/virtio_net.h"
-#include "hw/virtio_blk.h"
-#include "hw/virtio_rng.h"
 
 #include "mach.h"
 
@@ -33,12 +30,6 @@ rv_res mach_bus(void *user, u32 addr, u8 *data, u32 store,
     return rv_uart_bus(&m->uart1, addr - MACH_UART1_BASE, data, store, width);
   } else if (addr >= MACH_RTC0_BASE && addr < MACH_RTC0_BASE + RV_RTC_SIZE) {
     return rv_rtc_bus(&m->rtc0, addr - MACH_RTC0_BASE, data, store, width);
-  } else if (addr >= MACH_VIRTIO0_BASE && addr < MACH_VIRTIO0_BASE + 0x1000) {
-    return virtio_net_bus(&m->vnet0, addr - MACH_VIRTIO0_BASE, data, store, width);
-  } else if (addr >= MACH_VIRTIO1_BASE && addr < MACH_VIRTIO1_BASE + 0x1000) {
-    return virtio_blk_bus(&m->vblk0, addr - MACH_VIRTIO1_BASE, data, store, width);
-  } else if (addr >= MACH_VIRTIO2_BASE && addr < MACH_VIRTIO2_BASE + 0x1000) {
-    return virtio_rng_bus(&m->vrng0, addr - MACH_VIRTIO2_BASE, data, store, width);
   } else {
     return RV_BAD;
   }
@@ -90,9 +81,6 @@ void mach_init(mach *m, rv *cpu) {
   rv_uart_init(&m->uart0, NULL, &uart0_io);
   rv_uart_init(&m->uart1, m, &uart1_io);
   rv_rtc_init(&m->rtc0);
-  virtio_net_init(&m->vnet0, m, 3);
-  virtio_blk_init(&m->vblk0, m, 4, NULL);
-  virtio_rng_init(&m->vrng0, m, 5);
 }
 
 /* deinitialize machine */
@@ -101,9 +89,6 @@ void mach_deinit(mach *m) {
     free(m->ram);
     m->ram = NULL;
   }
-  virtio_net_deinit(&m->vnet0);
-  virtio_blk_deinit(&m->vblk0);
-  virtio_rng_deinit(&m->vrng0);
 }
 
 /* set up machine for boot */
@@ -117,11 +102,7 @@ void mach_set(mach *m, const char *firmware, const char *dtb) {
   m->cpu->r[11] /* a1 */ = MACH_RAM_BASE + MACH_DTB_OFFSET; /* dtb ptr */
 }
 
-/* set disk image path */
-void mach_set_disk(mach *m, const char *disk_path) {
-  virtio_blk_deinit(&m->vblk0);
-  virtio_blk_init(&m->vblk0, m, 4, disk_path);
-}
+
 
 /* run one machine cycle */
 void mach_step(mach *m, u32 *rtc_period) {
@@ -142,9 +123,6 @@ void mach_step(mach *m, u32 *rtc_period) {
     rv_plic_irq(&m->plic0, 2);
   
   rv_rtc_update(&m->rtc0);
-  virtio_net_update(&m->vnet0);
-  virtio_blk_update(&m->vblk0);
-  virtio_rng_update(&m->vrng0);
 
   irq = RV_CSI * rv_clint_msi(&m->clint0, 0) |
         RV_CTI * rv_clint_mti(&m->clint0, 0) |
