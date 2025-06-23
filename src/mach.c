@@ -4,12 +4,12 @@
 #include "vibe.h"
 
 
-rv_res mach_bus(void *user, u32 addr, u8 *data, bool store, u32 width) {
+bus_error mach_bus(void *user, u32 addr, u8 *data, bool store, u32 width) {
   mach *m = (mach *)user;
   if (addr >= MACH_RAM_BASE && addr < MACH_RAM_BASE + MACH_RAM_SIZE) {
     u8 *ram = m->ram + addr - MACH_RAM_BASE;
     memcpy(store ? ram : data, store ? data : ram, width);
-    return RV_OK;
+    return BUS_OK;
   } else if (addr >= MACH_PLIC0_BASE && addr < MACH_PLIC0_BASE + RV_PLIC_SIZE) {
     return rv_plic_bus(&m->plic0, addr - MACH_PLIC0_BASE, data, store, width);
   } else if (addr >= MACH_CLINT0_BASE &&
@@ -21,7 +21,7 @@ rv_res mach_bus(void *user, u32 addr, u8 *data, bool store, u32 width) {
   } else if (addr >= MACH_RTC0_BASE && addr < MACH_RTC0_BASE + RV_RTC_SIZE) {
     return rv_rtc_bus(&m->rtc0, addr - MACH_RTC0_BASE, data, store, width);
   } else {
-    return RV_BAD;
+    return BUS_UNMAPPED;
   }
 }
 

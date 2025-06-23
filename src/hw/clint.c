@@ -6,11 +6,11 @@ void rv_clint_init(rv_clint *clint, rv *cpu) {
   clint->cpu = cpu;
 }
 
-rv_res rv_clint_bus(rv_clint *clint, u32 addr, u8 *d, bool is_store, u32 width) {
+bus_error rv_clint_bus(rv_clint *clint, u32 addr, u8 *d, bool is_store, u32 width) {
   u32 *reg, data;
   rv_endcvt(d, (u8 *)&data, 4, 0);
   if (width != 4)
-    return RV_BAD;
+    return BUS_INVALID;
   if (addr == 0x0) /*R mswi */
     reg = &clint->mswi;
   else if (addr == 0x4000 + 0x0000) /*R mtimecmp */
@@ -22,13 +22,13 @@ rv_res rv_clint_bus(rv_clint *clint, u32 addr, u8 *d, bool is_store, u32 width) 
   else if (addr == 0x4000 + 0x7FF8 + 4) /*R mtimeh */
     reg = &clint->cpu->csr.mtimeh;
   else
-    return RV_BAD;
+    return BUS_UNMAPPED;
   if (is_store)
     *reg = data;
   else
     data = *reg;
   rv_endcvt((u8 *)&data, d, 4, 1);
-  return RV_OK;
+  return BUS_OK;
 }
 
 bool rv_clint_msi(rv_clint *clint, u32 context) {

@@ -5,12 +5,12 @@ void rv_rtc_init(rv_rtc *rtc) {
   rtc->base_time = time(NULL);
 }
 
-rv_res rv_rtc_bus(rv_rtc *rtc, u32 addr, u8 *data, bool is_store, u32 width) {
+bus_error rv_rtc_bus(rv_rtc *rtc, u32 addr, u8 *data, bool is_store, u32 width) {
   addr &= 0xFFFF;
   u32 value = 0;
 
   if (width != 4)
-    return RV_BAD_ALIGN;
+    return BUS_ALIGN;
 
   if (is_store) {
     rv_endcvt(data, (u8 *)&value, 4, 0);
@@ -64,7 +64,7 @@ rv_res rv_rtc_bus(rv_rtc *rtc, u32 addr, u8 *data, bool is_store, u32 width) {
     rv_endcvt((u8 *)&value, data, 4, 1);
   }
 
-  return RV_OK;
+  return BUS_OK;
 }
 
 void rv_rtc_update(rv_rtc *rtc) {

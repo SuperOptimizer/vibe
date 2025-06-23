@@ -14,5 +14,5 @@ struct rv_rtc {
 };
 
 void rv_rtc_init(rv_rtc *rtc);
-rv_res rv_rtc_bus(rv_rtc *rtc, u32 addr, u8 *data, bool is_store, u32 width);
+bus_error rv_rtc_bus(rv_rtc *rtc, u32 addr, u8 *data, bool is_store, u32 width);
 void rv_rtc_update(rv_rtc *rtc);

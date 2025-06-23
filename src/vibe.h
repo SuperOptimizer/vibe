@@ -21,6 +21,13 @@ typedef struct rv_uart rv_uart;
 typedef struct mach mach;
 typedef struct rv rv;
 
+typedef enum {
+  BUS_OK = 0,          /* Successful bus operation */
+  BUS_UNMAPPED = 1,    /* Address not mapped to any device */
+  BUS_INVALID = 2,     /* Invalid operation (e.g., unsupported width) */
+  BUS_ALIGN = 3,       /* Misaligned access */
+} bus_error;
+
 #include "rv.h"
 #include "hw/uart.h"
 #include "hw/rtc.h"

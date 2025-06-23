@@ -33,6 +33,6 @@ void mach_deinit(mach *m);
 void mach_set(mach *m, const char *firmware, const char *dtb);
 void mach_set_disk(mach *m, const char *disk_path);
 void mach_step(mach *m, u32 *rtc_period);
-rv_res mach_bus(void *user, u32 addr, u8 *data, bool store, u32 width);
+bus_error mach_bus(void *user, u32 addr, u8 *data, bool store, u32 width);
 
 

@@ -40,11 +40,11 @@ void rv_uart_init(rv_uart *uart) {
   rv_uart_fifo_init(&uart->rx);
 }
 
-rv_res rv_uart_bus(rv_uart *uart, u32 addr, u8 *d, bool is_store, u32 width) {
+bus_error rv_uart_bus(rv_uart *uart, u32 addr, u8 *d, bool is_store, u32 width) {
   u32 data;
   rv_endcvt(d, (u8 *)&data, 4, 0);
   if (width != 4)
-    return RV_BAD_ALIGN;
+    return BUS_ALIGN;
   if (addr == 0x00) {
     /*R txdata */
     if (is_store)
@@ -88,10 +88,10 @@ rv_res rv_uart_bus(rv_uart *uart, u32 addr, u8 *d, bool is_store, u32 width) {
     if (!is_store)
       data = 0;
   } else {
-    return RV_BAD;
+    return BUS_UNMAPPED;
   }
   rv_endcvt((u8 *)&data, d, 4, 1);
-  return RV_OK;
+  return BUS_OK;
 }
 
 u32 rv_uart_update(rv_uart *uart) {

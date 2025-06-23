@@ -2,6 +2,21 @@
 
 #define RV_RESET_VEC 0x80000000 /* CPU reset vector */
 
+/* Convert bus_error to rv_res */
+static inline rv_res bus_error_to_rv_res(bus_error err) {
+  switch (err) {
+    case BUS_OK:
+      return RV_OK;
+    case BUS_UNMAPPED:
+    case BUS_INVALID:
+      return RV_BAD;
+    case BUS_ALIGN:
+      return RV_BAD_ALIGN;
+    default:
+      return RV_BAD;
+  }
+}
+
 #define rv_ext(c) (1 << (u8)((c) - 'A')) /* isa extension bit in misa */
 
 void rv_init(rv *cpu, void *mach) {
@@ -184,8 +199,9 @@ static u32 rv_vmm(rv *cpu, u32 va, u32 *pa, rv_access access) {
     while (!tlb_hit) {
       /* pte_address = a + va.vpn[i] * PTESIZE */
       pte_address = a + (rv_bf(va, 21 + 10 * i, 12 + 10 * i) << 2);
-      if (mach_bus(cpu->mach, pte_address, (u8 *)&pte, 0, 4))
-        return RV_BAD;
+      rv_res res = bus_error_to_rv_res(mach_bus(cpu->mach, pte_address, (u8 *)&pte, 0, 4));
+      if (res != RV_OK)
+        return res;
       rv_endcvt((u8 *)&pte, (u8 *)&pte, 4, 0);
       if (!rv_b(pte, 0) || (!rv_b(pte, 1) && rv_b(pte, 2)))
         return RV_PAGEFAULT; /* pte.v == 0, or (pte.r == 0 and pte.w == 1) */
@@ -465,13 +481,13 @@ static u32 rv_bus(rv *cpu, u32 *va, u8 *data, u32 width,
     return err; /* page or access fault */
   if (((pa + width - 1) ^ pa) & ~0xFFFU) /* page bound overrun */ {
     u32 w0 /* load this many bytes from 1st page */ = 0x1000 - (*va & 0xFFF);
-    if ((err = mach_bus(cpu->mach, pa, ledata, access == RV_AW, w0)))
+    if ((err = bus_error_to_rv_res(mach_bus(cpu->mach, pa, ledata, access == RV_AW, w0))) != RV_OK)
       return err;
     width -= w0, *va += w0, data += w0;
     if ((err = rv_vmm(cpu, *va, &pa, RV_AW)))
       return err;
   }
-  if ((err = mach_bus(cpu->mach, pa, ledata, access == RV_AW, width)))
+  if ((err = bus_error_to_rv_res(mach_bus(cpu->mach, pa, ledata, access == RV_AW, width))) != RV_OK)
     return err;
   rv_endcvt(ledata, data, width, 0);
   return 0;
