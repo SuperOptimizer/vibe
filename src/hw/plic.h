@@ -15,10 +15,6 @@ struct rv_plic {
 };
 
 void rv_plic_init(rv_plic *plic);
-
 rv_res rv_plic_bus(rv_plic *plic, u32 addr, u8 *data, bool is_store, u32 width);
-
 rv_res rv_plic_irq(rv_plic *plic, u32 source);
-
 bool rv_plic_mei(rv_plic *plic, u32 context);
-

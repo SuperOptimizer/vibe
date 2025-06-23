@@ -15,8 +15,6 @@ struct rv_uart {
 };
 
 void rv_uart_init(rv_uart *uart);
-
 rv_res rv_uart_bus(rv_uart *uart, u32 addr, u8 *data, bool is_store, u32 width);
-
 u32 rv_uart_update(rv_uart *uart);
 

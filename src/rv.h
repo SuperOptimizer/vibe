@@ -1,6 +1,5 @@
 #pragma once
 
-#include "common.h"
 
 typedef enum rv_exception {
   RV_EIALIGN = 0,
@@ -30,9 +29,7 @@ typedef enum rv_res {
 } rv_res;
 
 typedef enum rv_priv { RV_PUSER = 0, RV_PSUPER = 1, RV_PMACH = 3 } rv_priv;
-
 typedef enum rv_access { RV_AR = 1, RV_AW = 2, RV_AX = 4 } rv_access;
-
 typedef enum rv_cause { RV_CSI = 8, RV_CTI = 128, RV_CEI = 512 } rv_cause;
 
 typedef struct rv_csr {
@@ -73,8 +70,6 @@ void rv_init(rv *cpu, void *user);
 
 /* Single-step CPU. Returns trap cause if trap occurred, else `RV_TRAP_NONE` */
 u32 rv_step(rv *cpu);
-
 void rv_irq(rv *cpu, rv_cause cause);
-
 void rv_endcvt(u8 *in, u8 *out, u32 width, bool is_store);
 

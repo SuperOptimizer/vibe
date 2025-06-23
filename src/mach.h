@@ -1,6 +1,5 @@
 #pragma once
 
-#include "common.h"
 
 #define MACH_RAM_BASE 0x80000000UL
 #define MACH_RAM_SIZE (1024UL * 1024UL * 128UL) /* 128MiB of ram */
@@ -20,25 +19,20 @@
 
 struct mach {
   rv cpu;
-  u8 *ram;
   rv_plic plic0;
   rv_clint clint0;
   rv_uart uart0;
   rv_rtc rtc0;
-  char *disk_path; /* Path to disk image */
+
+  u8 *ram;
+  char *disk_path;
 };
 
-/* machine functions */
 void mach_init(mach *m);
-
 void mach_deinit(mach *m);
-
 void mach_set(mach *m, const char *firmware, const char *dtb);
-
 void mach_set_disk(mach *m, const char *disk_path);
-
 void mach_step(mach *m, u32 *rtc_period);
-
 rv_res mach_bus(void *user, u32 addr, u8 *data, bool store, u32 width);
 
 
