@@ -1,18 +1,10 @@
-#include <curses.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "rv.h"
-#include "hw/clint.h"
-#include "hw/plic.h"
-#include "hw/uart.h"
-#include "hw/rtc.h"
+#include "vibe.h"
 
-#include "mach.h"
 
-/* machine general bus access */
-rv_res mach_bus(void *user, u32 addr, u8 *data, u32 store,
-                u32 width) {
+rv_res mach_bus(void *user, u32 addr, u8 *data, bool store, u32 width) {
   mach *m = (mach *)user;
   if (addr >= MACH_RAM_BASE && addr < MACH_RAM_BASE + MACH_RAM_SIZE) {
     u8 *ram = m->ram + addr - MACH_RAM_BASE;
@@ -26,8 +18,6 @@ rv_res mach_bus(void *user, u32 addr, u8 *data, u32 store,
                         width);
   } else if (addr >= MACH_UART0_BASE && addr < MACH_UART0_BASE + RV_UART_SIZE) {
     return rv_uart_bus(&m->uart0, addr - MACH_UART0_BASE, data, store, width);
-  } else if (addr >= MACH_UART1_BASE && addr < MACH_UART1_BASE + RV_UART_SIZE) {
-    return rv_uart_bus(&m->uart1, addr - MACH_UART1_BASE, data, store, width);
   } else if (addr >= MACH_RTC0_BASE && addr < MACH_RTC0_BASE + RV_RTC_SIZE) {
     return rv_rtc_bus(&m->rtc0, addr - MACH_RTC0_BASE, data, store, width);
   } else {
@@ -35,28 +25,9 @@ rv_res mach_bus(void *user, u32 addr, u8 *data, u32 store,
   }
 }
 
-/* uart0 I/O callback */
-rv_res uart0_io(void *user, u8 *byte, u32 write) {
-  int ch;
-  static int thrott = 0; /* prevent getch() from being called too much */
-  (void)user;
-  if (write && *byte != '\r') /* curses bugs out if we echo '\r' */
-    echochar(*byte);
-  else if (!write && ((thrott = (thrott + 1) & 0xFFF) || (ch = getch()) == ERR))
-    return RV_BAD;
-  else if (!write)
-    *byte = (u8)ch;
-  return RV_OK;
-}
 
-/* uart1 I/O callback */
-rv_res uart1_io(void *user, u8 *byte, u32 write) {
-  (void)user, (void)byte, (void)write;
-  /* your very own uart, do whatever you want with it! */
-  return RV_BAD; /* stubbed for now */
-}
 
-/* dumb bootrom */
+
 void load(const char *path, u8 *buf, u32 max_size) {
   FILE *f = fopen(path, "rb");
   if (!f) {
@@ -67,23 +38,18 @@ void load(const char *path, u8 *buf, u32 max_size) {
   fclose(f);
 }
 
-/* initialize machine */
-void mach_init(mach *m, rv *cpu) {
+void mach_init(mach *m) {
   memset(m, 0, sizeof(mach));
-  m->cpu = cpu;
   m->ram = malloc(MACH_RAM_SIZE);
   memset(m->ram, 0, MACH_RAM_SIZE);
 
-  /* peripheral setup */
-  rv_init(cpu, m, &mach_bus);
+  rv_init(&m->cpu, m);
   rv_plic_init(&m->plic0);
-  rv_clint_init(&m->clint0, cpu);
-  rv_uart_init(&m->uart0, NULL, &uart0_io);
-  rv_uart_init(&m->uart1, m, &uart1_io);
+  rv_clint_init(&m->clint0, &m->cpu);
+  rv_uart_init(&m->uart0);
   rv_rtc_init(&m->rtc0);
 }
 
-/* deinitialize machine */
 void mach_deinit(mach *m) {
   if (m->ram) {
     free(m->ram);
@@ -91,41 +57,37 @@ void mach_deinit(mach *m) {
   }
 }
 
-/* set up machine for boot */
 void mach_set(mach *m, const char *firmware, const char *dtb) {
-  /* load kernel and dtb */
   load(firmware, m->ram, MACH_RAM_SIZE);
   load(dtb, m->ram + MACH_DTB_OFFSET, MACH_RAM_SIZE - MACH_DTB_OFFSET);
 
   /* the bootloader and linux expect the following: */
-  m->cpu->r[10] /* a0 */ = 0;                               /* hartid */
-  m->cpu->r[11] /* a1 */ = MACH_RAM_BASE + MACH_DTB_OFFSET; /* dtb ptr */
+  m->cpu.r[10] /* a0 */ = 0;                               /* hartid */
+  m->cpu.r[11] /* a1 */ = MACH_RAM_BASE + MACH_DTB_OFFSET; /* dtb ptr */
+}
+
+void mach_set_disk(mach *m, const char *disk_path) {
+  if (disk_path) {}
 }
 
 
-
-/* run one machine cycle */
 void mach_step(mach *m, u32 *rtc_period) {
   u32 irq = 0;
 
-  /* update RTC */
   if (!(*rtc_period = (*rtc_period + 1) & 0xFFF))
-    if (!++m->cpu->csr.mtime)
-      m->cpu->csr.mtimeh++;
+    if (!++m->cpu.csr.mtime)
+      m->cpu.csr.mtimeh++;
 
-  /* execute one instruction */
-  rv_step(m->cpu);
+  rv_step(&m->cpu);
 
   /* update peripherals and interrupts */
   if (rv_uart_update(&m->uart0))
     rv_plic_irq(&m->plic0, 1);
-  if (rv_uart_update(&m->uart1))
-    rv_plic_irq(&m->plic0, 2);
-  
+
   rv_rtc_update(&m->rtc0);
 
   irq = RV_CSI * rv_clint_msi(&m->clint0, 0) |
         RV_CTI * rv_clint_mti(&m->clint0, 0) |
         RV_CEI * rv_plic_mei(&m->plic0, 0);
-  rv_irq(m->cpu, irq);
+  rv_irq(&m->cpu, irq);
 }

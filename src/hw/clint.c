@@ -1,15 +1,12 @@
+#include "vibe.h"
 
-#include "clint.h"
-
-#include <string.h>
 
 void rv_clint_init(rv_clint *clint, rv *cpu) {
   memset(clint, 0, sizeof(*clint));
   clint->cpu = cpu;
 }
 
-rv_res rv_clint_bus(rv_clint *clint, u32 addr, u8 *d, u32 is_store,
-                    u32 width) {
+rv_res rv_clint_bus(rv_clint *clint, u32 addr, u8 *d, bool is_store, u32 width) {
   u32 *reg, data;
   rv_endcvt(d, (u8 *)&data, 4, 0);
   if (width != 4)
@@ -34,14 +31,14 @@ rv_res rv_clint_bus(rv_clint *clint, u32 addr, u8 *d, u32 is_store,
   return RV_OK;
 }
 
-u32 rv_clint_msi(rv_clint *clint, u32 context) {
+bool rv_clint_msi(rv_clint *clint, u32 context) {
   (void)context; /* unused for now, perhaps add multicore support later */
-  return clint->mswi & 1;
+  return !!(clint->mswi & 1);
 }
 
-u32 rv_clint_mti(rv_clint *clint, u32 context) {
+bool rv_clint_mti(rv_clint *clint, u32 context) {
   (void)context;
-  return (clint->cpu->csr.mtimeh > clint->mtimecmph) ||
-         ((clint->cpu->csr.mtimeh == clint->mtimecmph) &&
-          (clint->cpu->csr.mtime >= clint->mtimecmp));
+  return !!((clint->cpu->csr.mtimeh > clint->mtimecmph) ||
+            ((clint->cpu->csr.mtimeh == clint->mtimecmph) &&
+             (clint->cpu->csr.mtime >= clint->mtimecmp)));
 }

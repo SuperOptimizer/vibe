@@ -1,29 +1,19 @@
-/* RISC-V Core-Local Interruptor implementation
-* see: https://github.com/riscv/riscv-aclint */
+#pragma once
 
-#ifndef RV_CLINT_H
-#define RV_CLINT_H
 
-#include "rv.h"
+#define RV_CLINT_SIZE  0x10000
 
-typedef struct rv_clint {
+struct rv_clint {
+  mach* mach;
   rv *cpu;
   u32 mswi, mtimecmp, mtimecmph;
-} rv_clint;
+};
 
-/* initialize the interruptor for a given cpu */
 void rv_clint_init(rv_clint *clint, rv *cpu);
 
-#define RV_CLINT_SIZE /* size of memory map */ 0x10000
+rv_res rv_clint_bus(rv_clint *clint, u32 addr, u8 *data, bool is_store, u32 width);
 
-/* perform a bus access on the interruptor */
-rv_res rv_clint_bus(rv_clint *clint, u32 addr, u8 *data, u32 is_store,
-                    u32 width);
+bool rv_clint_msi(rv_clint *clint, u32 context);
 
-/* returns 1 if a machine software interrupt is occurring */
-u32 rv_clint_msi(rv_clint *clint, u32 context);
+bool rv_clint_mti(rv_clint *clint, u32 context);
 
-/* returns 1 if a machine timer interrupt is occurring */
-u32 rv_clint_mti(rv_clint *clint, u32 context);
-
-#endif /* RV_CLINT_H */

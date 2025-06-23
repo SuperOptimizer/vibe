@@ -1,6 +1,19 @@
-#include "uart.h"
+#include <curses.h>
 
-#include <string.h>
+
+#include "vibe.h"
+
+rv_res uart_io(u8 *byte, bool write) {
+  int ch;
+  static int thrott = 0; /* prevent getch() from being called too much */
+  if (write && *byte != '\r') /* curses bugs out if we echo '\r' */
+    echochar(*byte);
+  else if (!write && ((thrott = (thrott + 1) & 0xFFF) || (ch = getch()) == ERR))
+    return RV_BAD;
+  else if (!write)
+    *byte = (u8)ch;
+  return RV_OK;
+}
 
 void rv_uart_fifo_init(rv_uart_fifo *fifo) { memset(fifo, 0, sizeof(*fifo)); }
 
@@ -20,17 +33,14 @@ u8 rv_uart_fifo_get(rv_uart_fifo *fifo) {
   return ch;
 }
 
-void rv_uart_init(rv_uart *uart, void *user, rv_uart_cb cb) {
+void rv_uart_init(rv_uart *uart) {
   memset(uart, 0, sizeof(*uart));
-  uart->user = user;
-  uart->cb = cb;
   uart->div = 3;
   rv_uart_fifo_init(&uart->tx);
   rv_uart_fifo_init(&uart->rx);
 }
 
-rv_res rv_uart_bus(rv_uart *uart, u32 addr, u8 *d, u32 is_store,
-                   u32 width) {
+rv_res rv_uart_bus(rv_uart *uart, u32 addr, u8 *d, bool is_store, u32 width) {
   u32 data;
   rv_endcvt(d, (u8 *)&data, 4, 0);
   if (width != 4)
@@ -87,11 +97,9 @@ rv_res rv_uart_bus(rv_uart *uart, u32 addr, u8 *d, u32 is_store,
 u32 rv_uart_update(rv_uart *uart) {
   u8 byte = uart->tx.buf[uart->tx.read];
   if (++uart->clk >= uart->div) {
-    if ((uart->txctrl & 1) && uart->tx.size &&
-        (uart->cb(uart->user, &byte, 1) == RV_OK))
+    if ((uart->txctrl & 1) && uart->tx.size && (uart_io(&byte, true) == RV_OK))
       rv_uart_fifo_get(&uart->tx);
-    if ((uart->rxctrl & 1) && (uart->rx.size < RV_UART_FIFO_SIZE) &&
-        (uart->cb(uart->user, &byte, 0) == RV_OK))
+    if ((uart->rxctrl & 1) && (uart->rx.size < RV_UART_FIFO_SIZE) && (uart_io(&byte, false) == RV_OK))
       rv_uart_fifo_put(&uart->rx, byte);
     uart->clk = 0;
   }

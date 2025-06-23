@@ -1,11 +1,8 @@
-#include "plic.h"
-
-#include <stdio.h>
-#include <string.h>
+#include "vibe.h"
 
 void rv_plic_init(rv_plic *plic) { memset(plic, 0, sizeof(*plic)); }
 
-rv_res rv_plic_bus(rv_plic *plic, u32 addr, u8 *d, u32 is_store,
+rv_res rv_plic_bus(rv_plic *plic, u32 addr, u8 *d, bool is_store,
                    u32 width) {
   u32 *reg = NULL, wmask = 0 - 1U, data;
   rv_endcvt(d, (u8 *)&data, 4, 0);
@@ -52,7 +49,7 @@ rv_res rv_plic_irq(rv_plic *plic, u32 source) {
   return RV_OK;
 }
 
-u32 rv_plic_mei(rv_plic *plic, u32 context) {
+bool rv_plic_mei(rv_plic *plic, u32 context) {
   u32 i, j, o = 0, h = 0;
   for (i = 0; i < RV_PLIC_NSRC / 32; i++) {
     u32 en_off = i + context * RV_PLIC_NSRC / 32;

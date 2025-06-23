@@ -1,15 +1,12 @@
-#include "rv.h"
-
-#include <string.h>
+#include "vibe.h"
 
 #define RV_RESET_VEC 0x80000000 /* CPU reset vector */
 
 #define rv_ext(c) (1 << (u8)((c) - 'A')) /* isa extension bit in misa */
 
-void rv_init(rv *cpu, void *user, rv_bus_cb bus_cb) {
+void rv_init(rv *cpu, void *mach) {
   memset(cpu, 0, sizeof(*cpu));
-  cpu->user = user;
-  cpu->bus_cb = bus_cb;
+  cpu->mach = mach;
   cpu->pc = RV_RESET_VEC;
   cpu->csr.misa = (1 << 30)     /* MXL = 1 [XLEN=32] */
                   | rv_ext('A') /* Atomics */
@@ -112,19 +109,19 @@ static rv_res rv_csr_bus(rv *cpu, u32 csr, u32 w, u32 *io) {
     return RV_BAD;                       /* invalid csr */
   *io = w ? *io : (*y & rm);             /* only read allowed bits */
   *y = w ? (*y & ~wm) | (*io & wm) : *y; /* only write allowed bits  */
-  
+
   /* Invalidate TLB when SATP is written */
   if (w && csr == 0x180) {
     for (u32 j = 0; j < RV_TLB_ENTRIES; j++) {
       cpu->tlb[j].valid = 0;
     }
   }
-  
+
   return RV_OK;
 }
 
 /* trigger a trap */
-static u32 rv_trap(rv *cpu, u32 cause, u32 tval) {
+static rv_exception rv_trap(rv *cpu, u32 cause, u32 tval) {
   u32 is_interrupt = !!(cause & 0x80000000), rcause = cause & ~0x80000000;
   rv_priv xp = /* destination privilege, switch from y = cpu->priv to this */
       (cpu->priv < RV_PMACH) &&
@@ -153,7 +150,7 @@ static u32 rv_trap(rv *cpu, u32 cause, u32 tval) {
 }
 
 /* bus access trap with tval */
-static u32 rv_trap_bus(rv *cpu, u32 err, u32 tval, rv_access a) {
+static u32 rv_trap_bus(rv *cpu, rv_exception err, u32 tval, rv_access a) {
   static const u32 ex[] = {RV_EIFAULT, RV_EIALIGN, RV_EIPAGE,  /* RV_AR */
                            RV_ELFAULT, RV_ELALIGN, RV_ELPAGE,  /* RV_AW */
                            RV_ESFAULT, RV_ESALIGN, RV_ESPAGE}; /* RV_AX */
@@ -173,7 +170,7 @@ static u32 rv_vmm(rv *cpu, u32 va, u32 *pa, rv_access access) {
         pte, pte_address, tlb_hit = 0;
     u8 asid = rv_bf(cpu->csr.satp, 30, 22);
     u32 va_page = va & ~0xFFFU;
-    
+
     /* TLB lookup - search all entries */
     for (u32 j = 0; j < RV_TLB_ENTRIES; j++) {
       if (cpu->tlb[j].valid && cpu->tlb[j].va == va_page && cpu->tlb[j].asid == asid) {
@@ -183,11 +180,11 @@ static u32 rv_vmm(rv *cpu, u32 va, u32 *pa, rv_access access) {
         break;
       }
     }
-    
+
     while (!tlb_hit) {
       /* pte_address = a + va.vpn[i] * PTESIZE */
       pte_address = a + (rv_bf(va, 21 + 10 * i, 12 + 10 * i) << 2);
-      if (cpu->bus_cb(cpu->user, pte_address, (u8 *)&pte, 0, 4))
+      if (mach_bus(cpu->mach, pte_address, (u8 *)&pte, 0, 4))
         return RV_BAD;
       rv_endcvt((u8 *)&pte, (u8 *)&pte, 4, 0);
       if (!rv_b(pte, 0) || (!rv_b(pte, 1) && rv_b(pte, 2)))
@@ -199,7 +196,7 @@ static u32 rv_vmm(rv *cpu, u32 va, u32 *pa, rv_access access) {
       i = i - 1;
       a = rv_tbf(pte, 31, 10, 12); /* a = pte.ppn[*] * PAGESIZE */
     }
-    
+
     if (!tlb_hit) {
       /* TLB miss - add new entry using round-robin replacement */
       u32 victim = cpu->tlb_next_victim;
@@ -429,7 +426,7 @@ static u32 rvc(u32 c) {
   }
 }
 
-void rv_endcvt(u8 *in, u8 *out, u32 width, u32 is_store) {
+void rv_endcvt(u8 *in, u8 *out, u32 width, bool is_store) {
   if (!is_store && width == 1)
     *out = in[0];
   else if (!is_store && width == 2)
@@ -437,13 +434,23 @@ void rv_endcvt(u8 *in, u8 *out, u32 width, u32 is_store) {
   else if (!is_store && width == 4)
     *((u32 *)out) = (u32)in[0] | ((u32)in[1] << 8) |
                     ((u32)in[2] << 16) | (((u32)in[3]) << 24);
+  else if (!is_store && width == 8)
+    *((u64 *)out) = (u64)in[0] | ((u64)in[1] << 8) |
+                    ((u64)in[2] << 16) | ((u64)in[3] << 24) |
+                    ((u64)in[4] << 32) | ((u64)in[5] << 40) |
+                    ((u64)in[6] << 48) | ((u64)in[7] << 56);
   else if (width == 1)
     out[0] = *in;
   else if (width == 2)
     out[0] = *(u16 *)in >> 0 & 0xFF, out[1] = (*(u16 *)in >> 8);
-  else
+  else if (width == 4)
     out[0] = *(u32 *)in >> 0 & 0xFF, out[1] = *(u32 *)in >> 8 & 0xFF,
         out[2] = *(u32 *)in >> 16 & 0xFF, out[3] = *(u32 *)in >> 24 & 0xFF;
+  else /* width == 8 */
+    out[0] = *(u64 *)in >> 0 & 0xFF, out[1] = *(u64 *)in >> 8 & 0xFF,
+        out[2] = *(u64 *)in >> 16 & 0xFF, out[3] = *(u64 *)in >> 24 & 0xFF,
+        out[4] = *(u64 *)in >> 32 & 0xFF, out[5] = *(u64 *)in >> 40 & 0xFF,
+        out[6] = *(u64 *)in >> 48 & 0xFF, out[7] = *(u64 *)in >> 56 & 0xFF;
 }
 
 /* perform a bus access. access == RV_AW stores data. */
@@ -458,13 +465,13 @@ static u32 rv_bus(rv *cpu, u32 *va, u8 *data, u32 width,
     return err; /* page or access fault */
   if (((pa + width - 1) ^ pa) & ~0xFFFU) /* page bound overrun */ {
     u32 w0 /* load this many bytes from 1st page */ = 0x1000 - (*va & 0xFFF);
-    if ((err = cpu->bus_cb(cpu->user, pa, ledata, access == RV_AW, w0)))
+    if ((err = mach_bus(cpu->mach, pa, ledata, access == RV_AW, w0)))
       return err;
     width -= w0, *va += w0, data += w0;
     if ((err = rv_vmm(cpu, *va, &pa, RV_AW)))
       return err;
   }
-  if ((err = cpu->bus_cb(cpu->user, pa, ledata, access == RV_AW, width)))
+  if ((err = mach_bus(cpu->mach, pa, ledata, access == RV_AW, width)))
     return err;
   rv_endcvt(ledata, data, width, 0);
   return 0;
@@ -516,13 +523,12 @@ static u32 rv_service(rv *cpu) {
 u32 rv_step(rv *cpu) {
   u32 i, tval, err = rv_if(cpu, &i, &tval); /* fetch instruction into i */
 
-  
   /* Track if we're in a tight loop */
   static u32 last_pc = 0;
   static int same_pc_count = 0;
   static u32 loop_locations[5] = {0};
   static int loop_idx = 0;
-  
+
   if (cpu->pc == last_pc) {
     if (++same_pc_count == 1000) {
       same_pc_count = 0;
@@ -530,7 +536,7 @@ u32 rv_step(rv *cpu) {
   } else {
     last_pc = cpu->pc;
     same_pc_count = 0;
-    
+
     /* Track short loops */
     for (int j = 0; j < 5; j++) {
       if (loop_locations[j] == cpu->pc) {
@@ -540,7 +546,7 @@ u32 rv_step(rv *cpu) {
     loop_locations[loop_idx] = cpu->pc;
     loop_idx = (loop_idx + 1) % 5;
   }
-  
+
   if (!++cpu->csr.cycle)
     cpu->csr.cycleh++; /* add to cycle,cycleh with carry */
   if (err)
@@ -697,11 +703,11 @@ u32 rv_step(rv *cpu) {
           y = rv_if3(i) ? yhi : ylo;           /* return hi word if mulh, otherwise lo */
         } else {
           if (rv_if3(i) == 4) /*I div */
-            y = b ? (u32)((rv_s32)a / (rv_s32)b) : (u32)(-1);
+            y = b ? (u32)((s32)a / (s32)b) : (u32)(-1);
           else if (rv_if3(i) == 5) /*I divu */
             y = b ? (a / b) : (u32)(-1);
           else if (rv_if3(i) == 6) /*I rem */
-            y = b ? (u32)((rv_s32)a % (rv_s32)b) : a;
+            y = b ? (u32)((s32)a % (s32)b) : a;
           else /*I remu */
             y = b ? a % b : a;
         } /* all this because we don't have 64bits. worth it? probably not B) */

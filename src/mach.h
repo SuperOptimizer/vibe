@@ -1,9 +1,6 @@
 #pragma once
 
-#include "hw/plic.h"
-#include "hw/clint.h"
-#include "hw/uart.h"
-#include "hw/rtc.h"
+#include "common.h"
 
 #define MACH_RAM_BASE 0x80000000UL
 #define MACH_RAM_SIZE (1024UL * 1024UL * 128UL) /* 128MiB of ram */
@@ -19,17 +16,20 @@
 #define MACH_VIRTIO2_BASE 0x10003000UL /* virtio-rng base address */
 #define MACH_NVME0_BASE 0x10004000UL   /* NVMe controller base address */
 
-typedef struct mach {
-  rv *cpu;
+#define VIRTIO_MMIO_SIZE 0x1000UL  /* Size of virtio MMIO region */
+
+struct mach {
+  rv cpu;
   u8 *ram;
   rv_plic plic0;
   rv_clint clint0;
-  rv_uart uart0, uart1;
+  rv_uart uart0;
   rv_rtc rtc0;
-} mach;
+  char *disk_path; /* Path to disk image */
+};
 
 /* machine functions */
-void mach_init(mach *m, rv *cpu);
+void mach_init(mach *m);
 
 void mach_deinit(mach *m);
 
@@ -39,9 +39,6 @@ void mach_set_disk(mach *m, const char *disk_path);
 
 void mach_step(mach *m, u32 *rtc_period);
 
-rv_res mach_bus(void *user, u32 addr, u8 *data, u32 store, u32 width);
+rv_res mach_bus(void *user, u32 addr, u8 *data, bool store, u32 width);
 
-/* UART callbacks - these could be in mach.c but declared here for flexibility */
-rv_res uart0_io(void *user, u8 *byte, u32 write);
 
-rv_res uart1_io(void *user, u8 *byte, u32 write);
