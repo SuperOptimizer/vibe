@@ -23,7 +23,9 @@ struct mach {
   hw_clint clint0;
   hw_uart uart0;
   hw_rtc rtc0;
+  hw_virtio_net virtio_net0;
   hw_virtio_blk virtio_blk0;
+  hw_virtio_rng virtio_rng0;
 
   u8 *ram;
   char *disk_path;

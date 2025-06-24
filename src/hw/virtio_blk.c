@@ -214,6 +214,8 @@ void hw_virtio_blk_init(hw_virtio_blk *blk, mach *m, const char *disk_path) {
     memset(blk, 0, sizeof(*blk));
     hw_virtio_init(&blk->vio, m, VIRTIO_BLK_ID);
     
+    blk->vio.irq_num = 3; // IRQ 3 for virtio-blk
+    
     blk->vio.device_features |= (1ULL << VIRTIO_BLK_F_BLK_SIZE);
     blk->vio.reset = virtio_blk_reset;
     blk->vio.get_config = virtio_blk_get_config;

@@ -4,7 +4,9 @@
 #define VIRTIO_VERSION 0x2
 #define VIRTIO_VENDOR_ID 0x554D4551  
 
+#define VIRTIO_NET_ID 1
 #define VIRTIO_BLK_ID 2
+#define VIRTIO_RNG_ID 4
 
 #define VIRTIO_STATUS_ACKNOWLEDGE  1
 #define VIRTIO_STATUS_DRIVER       2
@@ -98,6 +100,7 @@ typedef struct hw_virtio {
     u32 interrupt_status;
     u8 status;
     u32 config_generation;
+    u32 irq_num;
     
     struct virtqueue queues[8];
     

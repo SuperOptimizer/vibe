@@ -90,11 +90,25 @@
             reg = <0x101000 0x10000>;
         };
 
+        virtio_net@10001000 {
+            compatible = "virtio,mmio";
+            reg = <0x10001000 0x1000>;
+            interrupt-parent = <&plic>;
+            interrupts = <2>;
+        };
+
         virtio_blk@10002000 {
             compatible = "virtio,mmio";
             reg = <0x10002000 0x1000>;
             interrupt-parent = <&plic>;
-            interrupts = <2>;
+            interrupts = <3>;
+        };
+
+        virtio_rng@10003000 {
+            compatible = "virtio,mmio";
+            reg = <0x10003000 0x1000>;
+            interrupt-parent = <&plic>;
+            interrupts = <4>;
         };
     };
 };

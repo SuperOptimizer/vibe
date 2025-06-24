@@ -20,8 +20,12 @@ bus_error mach_bus(void *user, u32 addr, u8 *data, bool store, u32 width) {
     return hw_uart_bus(&m->uart0, addr - MACH_UART0_BASE, data, store, width);
   } else if (addr >= MACH_RTC0_BASE && addr < MACH_RTC0_BASE + hw_rtc_SIZE) {
     return hw_rtc_bus(&m->rtc0, addr - MACH_RTC0_BASE, data, store, width);
+  } else if (addr >= MACH_VIRTIO0_BASE && addr < MACH_VIRTIO0_BASE + VIRTIO_MMIO_SIZE) {
+    return hw_virtio_mmio_bus(&m->virtio_net0.vio, addr - MACH_VIRTIO0_BASE, data, store, width);
   } else if (addr >= MACH_VIRTIO1_BASE && addr < MACH_VIRTIO1_BASE + VIRTIO_MMIO_SIZE) {
     return hw_virtio_mmio_bus(&m->virtio_blk0.vio, addr - MACH_VIRTIO1_BASE, data, store, width);
+  } else if (addr >= MACH_VIRTIO2_BASE && addr < MACH_VIRTIO2_BASE + VIRTIO_MMIO_SIZE) {
+    return hw_virtio_mmio_bus(&m->virtio_rng0.vio, addr - MACH_VIRTIO2_BASE, data, store, width);
   } else {
     return BUS_UNMAPPED;
   }
@@ -50,6 +54,8 @@ void mach_init(mach *m) {
   hw_clint_init(&m->clint0, &m->cpu);
   hw_uart_init(&m->uart0);
   hw_rtc_init(&m->rtc0);
+  hw_virtio_net_init(&m->virtio_net0, m);
+  hw_virtio_rng_init(&m->virtio_rng0, m);
 }
 
 void mach_deinit(mach *m) {
@@ -57,7 +63,9 @@ void mach_deinit(mach *m) {
     free(m->ram);
     m->ram = NULL;
   }
+  hw_virtio_net_destroy(&m->virtio_net0);
   hw_virtio_blk_destroy(&m->virtio_blk0);
+  hw_virtio_rng_destroy(&m->virtio_rng0);
 }
 
 void mach_set(mach *m, const char *firmware, const char *dtb) {
@@ -90,6 +98,7 @@ void mach_step(mach *m, u32 *rtc_period) {
     hw_plic_irq(&m->plic0, 1);
 
   hw_rtc_update(&m->rtc0);
+  hw_virtio_net_update(&m->virtio_net0);
 
   irq = RV_CSI * hw_clint_msi(&m->clint0, 0) |
         RV_CTI * hw_clint_mti(&m->clint0, 0) |

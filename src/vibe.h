@@ -20,6 +20,8 @@ typedef struct hw_rtc hw_rtc;
 typedef struct hw_uart hw_uart;
 typedef struct hw_virtio hw_virtio;
 typedef struct hw_virtio_blk hw_virtio_blk;
+typedef struct hw_virtio_net hw_virtio_net;
+typedef struct hw_virtio_rng hw_virtio_rng;
 typedef struct mach mach;
 typedef struct rv rv;
 
@@ -37,5 +39,7 @@ typedef enum {
 #include "hw/clint.h"
 #include "hw/virtio.h"
 #include "hw/virtio_blk.h"
+#include "hw/virtio_net.h"
+#include "hw/virtio_rng.h"
 
 #include "mach.h"

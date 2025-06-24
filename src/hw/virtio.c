@@ -213,5 +213,5 @@ bus_error hw_virtio_mmio_bus(hw_virtio *vio, u32 addr, u8 *data, bool is_store, 
 
 void hw_virtio_raise_interrupt(hw_virtio *vio, u32 flags) {
     vio->interrupt_status |= flags;
-    hw_plic_irq(&vio->mach->plic0, 2);
+    hw_plic_irq(&vio->mach->plic0, vio->irq_num);
 }
