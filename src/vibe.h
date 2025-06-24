@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
+#include <time.h>
 
 typedef uint8_t u8;
 typedef uint16_t u16;

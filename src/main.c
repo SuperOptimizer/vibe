@@ -21,7 +21,7 @@ int main(int argc, const char *const *argv) {
   if (argc == 1 || (argc == 2 && debug_level)) {
     firmware = "../linux/fw_payload.bin";
     dtb = "../linux/vibe.dtb";
-    disk = "../linux/debian_rootfs.ext2";
+    disk = "../linux/rootfs.cpio";
   } else if (argc < 3) {
     printf("Usage: %s [--debug=<level>] [firmware dtb [disk] [ninst]]\n", argv[0]);
     printf("Debug levels: all, cpu, mem, virtio, inst, or hex value\n");
