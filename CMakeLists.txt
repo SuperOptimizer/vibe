@@ -5,7 +5,7 @@ set(CMAKE_C_STANDARD 23)
 
 include_directories(src/)
 
-add_executable(vibe src/main.c src/mach.c src/rv.c src/hw/clint.c src/hw/plic.c src/hw/uart.c src/hw/rtc.c)
+add_executable(vibe src/main.c src/mach.c src/rv.c src/hw/clint.c src/hw/plic.c src/hw/uart.c src/hw/rtc.c src/hw/virtio.c src/hw/virtio_blk.c)
 
 #-fsanitize=undefined,address
 target_link_libraries(vibe curses)

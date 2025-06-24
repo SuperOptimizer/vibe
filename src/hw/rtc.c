@@ -1,11 +1,11 @@
 #include "vibe.h"
 
-void rv_rtc_init(rv_rtc *rtc) {
+void hw_rtc_init(hw_rtc *rtc) {
   memset(rtc, 0, sizeof(*rtc));
   rtc->base_time = time(NULL);
 }
 
-bus_error rv_rtc_bus(rv_rtc *rtc, u32 addr, u8 *data, bool is_store, u32 width) {
+bus_error hw_rtc_bus(hw_rtc *rtc, u32 addr, u8 *data, bool is_store, u32 width) {
   addr &= 0xFFFF;
   u32 value = 0;
 
@@ -67,7 +67,7 @@ bus_error rv_rtc_bus(rv_rtc *rtc, u32 addr, u8 *data, bool is_store, u32 width) 
   return BUS_OK;
 }
 
-void rv_rtc_update(rv_rtc *rtc) {
+void hw_rtc_update(hw_rtc *rtc) {
   struct timeval tv;
   gettimeofday(&tv, NULL);
 

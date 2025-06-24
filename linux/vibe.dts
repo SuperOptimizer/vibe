@@ -89,5 +89,12 @@
             compatible = "generic-rtc";
             reg = <0x101000 0x10000>;
         };
+
+        virtio_blk@10002000 {
+            compatible = "virtio,mmio";
+            reg = <0x10002000 0x1000>;
+            interrupt-parent = <&plic>;
+            interrupts = <2>;
+        };
     };
 };

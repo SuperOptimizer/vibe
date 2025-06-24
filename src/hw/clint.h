@@ -1,14 +1,14 @@
 #pragma once
 
-#define RV_CLINT_SIZE  0x10000
+#define hw_clint_SIZE  0x10000
 
-struct rv_clint {
+struct hw_clint {
   mach* mach;
   rv *cpu;
   u32 mswi, mtimecmp, mtimecmph;
 };
 
-void rv_clint_init(rv_clint *clint, rv *cpu);
-bus_error rv_clint_bus(rv_clint *clint, u32 addr, u8 *data, bool is_store, u32 width);
-bool rv_clint_msi(rv_clint *clint, u32 context);
-bool rv_clint_mti(rv_clint *clint, u32 context);
+void hw_clint_init(hw_clint *clint, rv *cpu);
+bus_error hw_clint_bus(hw_clint *clint, u32 addr, u8 *data, bool is_store, u32 width);
+bool hw_clint_msi(hw_clint *clint, u32 context);
+bool hw_clint_mti(hw_clint *clint, u32 context);

@@ -19,10 +19,11 @@
 
 struct mach {
   rv cpu;
-  rv_plic plic0;
-  rv_clint clint0;
-  rv_uart uart0;
-  rv_rtc rtc0;
+  hw_plic plic0;
+  hw_clint clint0;
+  hw_uart uart0;
+  hw_rtc rtc0;
+  hw_virtio_blk virtio_blk0;
 
   u8 *ram;
   char *disk_path;

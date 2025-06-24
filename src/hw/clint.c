@@ -1,12 +1,12 @@
 #include "vibe.h"
 
 
-void rv_clint_init(rv_clint *clint, rv *cpu) {
+void hw_clint_init(hw_clint *clint, rv *cpu) {
   memset(clint, 0, sizeof(*clint));
   clint->cpu = cpu;
 }
 
-bus_error rv_clint_bus(rv_clint *clint, u32 addr, u8 *d, bool is_store, u32 width) {
+bus_error hw_clint_bus(hw_clint *clint, u32 addr, u8 *d, bool is_store, u32 width) {
   u32 *reg, data;
   rv_endcvt(d, (u8 *)&data, 4, 0);
   if (width != 4)
@@ -31,12 +31,12 @@ bus_error rv_clint_bus(rv_clint *clint, u32 addr, u8 *d, bool is_store, u32 widt
   return BUS_OK;
 }
 
-bool rv_clint_msi(rv_clint *clint, u32 context) {
+bool hw_clint_msi(hw_clint *clint, u32 context) {
   (void)context; /* unused for now, perhaps add multicore support later */
   return !!(clint->mswi & 1);
 }
 
-bool rv_clint_mti(rv_clint *clint, u32 context) {
+bool hw_clint_mti(hw_clint *clint, u32 context) {
   (void)context;
   return !!((clint->cpu->csr.mtimeh > clint->mtimecmph) ||
             ((clint->cpu->csr.mtimeh == clint->mtimecmph) &&

@@ -15,32 +15,32 @@ rv_res uart_io(u8 *byte, bool write) {
   return RV_OK;
 }
 
-void rv_uart_fifo_init(rv_uart_fifo *fifo) { memset(fifo, 0, sizeof(*fifo)); }
+void hw_uart_fifo_init(hw_uart_fifo *fifo) { memset(fifo, 0, sizeof(*fifo)); }
 
-void rv_uart_fifo_put(rv_uart_fifo *fifo, u8 byte) {
-  if (fifo->size == RV_UART_FIFO_SIZE)
+void hw_uart_fifo_put(hw_uart_fifo *fifo, u8 byte) {
+  if (fifo->size == hw_uart_FIFO_SIZE)
     return;
-  fifo->buf[(fifo->read + fifo->size) & (RV_UART_FIFO_SIZE - 1)] = byte;
+  fifo->buf[(fifo->read + fifo->size) & (hw_uart_FIFO_SIZE - 1)] = byte;
   fifo->size++;
 }
 
-u8 rv_uart_fifo_get(rv_uart_fifo *fifo) {
+u8 hw_uart_fifo_get(hw_uart_fifo *fifo) {
   u8 ch = fifo->buf[fifo->read];
   if (!fifo->size)
     return 0;
-  fifo->read = (fifo->read + 1) & (RV_UART_FIFO_SIZE - 1);
+  fifo->read = (fifo->read + 1) & (hw_uart_FIFO_SIZE - 1);
   fifo->size--;
   return ch;
 }
 
-void rv_uart_init(rv_uart *uart) {
+void hw_uart_init(hw_uart *uart) {
   memset(uart, 0, sizeof(*uart));
   uart->div = 3;
-  rv_uart_fifo_init(&uart->tx);
-  rv_uart_fifo_init(&uart->rx);
+  hw_uart_fifo_init(&uart->tx);
+  hw_uart_fifo_init(&uart->rx);
 }
 
-bus_error rv_uart_bus(rv_uart *uart, u32 addr, u8 *d, bool is_store, u32 width) {
+bus_error hw_uart_bus(hw_uart *uart, u32 addr, u8 *d, bool is_store, u32 width) {
   u32 data;
   rv_endcvt(d, (u8 *)&data, 4, 0);
   if (width != 4)
@@ -48,13 +48,13 @@ bus_error rv_uart_bus(rv_uart *uart, u32 addr, u8 *d, bool is_store, u32 width) 
   if (addr == 0x00) {
     /*R txdata */
     if (is_store)
-      rv_uart_fifo_put(&uart->tx, (u8)data);
+      hw_uart_fifo_put(&uart->tx, (u8)data);
     else
-      data = (u32)(uart->tx.size == RV_UART_FIFO_SIZE) << 31U;
+      data = (u32)(uart->tx.size == hw_uart_FIFO_SIZE) << 31U;
   } else if (addr == 0x04) {
     /*R rxdata */
     if (!is_store)
-      data = ((u32)(!uart->rx.size) << 31U) | rv_uart_fifo_get(&uart->rx);
+      data = ((u32)(!uart->rx.size) << 31U) | hw_uart_fifo_get(&uart->rx);
   } else if (addr == 0x08) {
     /*R txctrl */
     if (is_store)
@@ -94,13 +94,13 @@ bus_error rv_uart_bus(rv_uart *uart, u32 addr, u8 *d, bool is_store, u32 width) 
   return BUS_OK;
 }
 
-u32 rv_uart_update(rv_uart *uart) {
+u32 hw_uart_update(hw_uart *uart) {
   u8 byte = uart->tx.buf[uart->tx.read];
   if (++uart->clk >= uart->div) {
     if ((uart->txctrl & 1) && uart->tx.size && (uart_io(&byte, true) == RV_OK))
-      rv_uart_fifo_get(&uart->tx);
-    if ((uart->rxctrl & 1) && (uart->rx.size < RV_UART_FIFO_SIZE) && (uart_io(&byte, false) == RV_OK))
-      rv_uart_fifo_put(&uart->rx, byte);
+      hw_uart_fifo_get(&uart->tx);
+    if ((uart->rxctrl & 1) && (uart->rx.size < hw_uart_FIFO_SIZE) && (uart_io(&byte, false) == RV_OK))
+      hw_uart_fifo_put(&uart->rx, byte);
     uart->clk = 0;
   }
   if ((uart->txctrl >> 16) > uart->tx.size && (uart->ie & 1))

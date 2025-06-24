@@ -14,10 +14,12 @@ typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
 
-typedef struct rv_clint rv_clint;
-typedef struct rv_plic rv_plic;
-typedef struct rv_rtc rv_rtc;
-typedef struct rv_uart rv_uart;
+typedef struct hw_clint hw_clint;
+typedef struct hw_plic hw_plic;
+typedef struct hw_rtc hw_rtc;
+typedef struct hw_uart hw_uart;
+typedef struct hw_virtio hw_virtio;
+typedef struct hw_virtio_blk hw_virtio_blk;
 typedef struct mach mach;
 typedef struct rv rv;
 
@@ -33,5 +35,7 @@ typedef enum {
 #include "hw/rtc.h"
 #include "hw/plic.h"
 #include "hw/clint.h"
+#include "hw/virtio.h"
+#include "hw/virtio_blk.h"
 
 #include "mach.h"

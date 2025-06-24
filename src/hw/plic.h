@@ -1,20 +1,20 @@
 #pragma once
 
-#define RV_PLIC_SIZE  0x4000000
-#define RV_PLIC_NSRC 32
-#define RV_PLIC_NCTX 1
+#define hw_plic_SIZE  0x4000000
+#define hw_plic_NSRC 32
+#define hw_plic_NCTX 1
 
-struct rv_plic {
+struct hw_plic {
   mach* mach;
-  u32 priority[RV_PLIC_NSRC];
-  u32 pending[RV_PLIC_NSRC / 32];
-  u32 enable[RV_PLIC_NSRC / 32 * RV_PLIC_NCTX];
-  u32 thresh[RV_PLIC_NCTX];
-  u32 claim[RV_PLIC_NCTX];
-  u32 claiming[RV_PLIC_NSRC / 32]; /* interrupts with claiming in progress */
+  u32 priority[hw_plic_NSRC];
+  u32 pending[hw_plic_NSRC / 32];
+  u32 enable[hw_plic_NSRC / 32 * hw_plic_NCTX];
+  u32 thresh[hw_plic_NCTX];
+  u32 claim[hw_plic_NCTX];
+  u32 claiming[hw_plic_NSRC / 32]; /* interrupts with claiming in progress */
 };
 
-void rv_plic_init(rv_plic *plic);
-bus_error rv_plic_bus(rv_plic *plic, u32 addr, u8 *data, bool is_store, u32 width);
-rv_res rv_plic_irq(rv_plic *plic, u32 source);
-bool rv_plic_mei(rv_plic *plic, u32 context);
+void hw_plic_init(hw_plic *plic);
+bus_error hw_plic_bus(hw_plic *plic, u32 addr, u8 *data, bool is_store, u32 width);
+rv_res hw_plic_irq(hw_plic *plic, u32 source);
+bool hw_plic_mei(hw_plic *plic, u32 context);
