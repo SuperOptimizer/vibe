@@ -165,3 +165,37 @@ CONFIG_UNIX_DIAG=y
 CONFIG_INET_DIAG=y
 CONFIG_INET_TCP_DIAG=y
 CONFIG_INET_UDP_DIAG=y
+
+# System call support
+CONFIG_EXPERT=y
+
+# Timer/Event system calls (dhcpcd uses these heavily)
+CONFIG_TIMERFD=y
+CONFIG_EVENTFD=y
+CONFIG_SIGNALFD=y
+CONFIG_EPOLL=y
+
+# Advanced networking system calls
+CONFIG_NET_KEY=y
+CONFIG_INET_ESP=y
+CONFIG_INET_IPCOMP=y
+CONFIG_INET_XFRM_TUNNEL=y
+CONFIG_INET_TUNNEL=y
+
+# Socket options dhcpcd needs
+CONFIG_PACKET_DIAG=y
+CONFIG_NETLINK_DIAG=y
+
+# File system capabilities
+CONFIG_FILE_LOCKING=y
+CONFIG_FHANDLE=y
+
+# Process/signal handling
+CONFIG_CHECKPOINT_RESTORE=y
+
+# Ensure proper system call table
+CONFIG_RISCV_SBI=y
+CONFIG_RISCV_SBI_V01=y
+
+# 32-bit specific time handling
+CONFIG_COMPAT_32BIT_TIME=y
