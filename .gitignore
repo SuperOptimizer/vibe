@@ -1,3 +1,4 @@
 .claude/
 .idea/
 cmake-build-debug/
+buildroot/
