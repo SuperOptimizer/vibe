@@ -19,9 +19,9 @@ int main(int argc, const char *const *argv) {
   const char *disk = NULL;
 
   if (argc == 1 || (argc == 2 && debug_level)) {
-    firmware = "../linux/fw_payload.bin";
-    dtb = "../linux/vibe.dtb";
-    disk = "../linux/rootfs.cpio";
+    firmware = "../linux/buildroot/output/images/fw_payload.bin";
+    dtb = "../linux/buildroot/output/images/vibe.dtb";
+    disk = "../linux/buildroot/output/images/rootfs.cpio";
   } else if (argc < 3) {
     printf("Usage: %s [--debug=<level>] [firmware dtb [disk] [ninst]]\n", argv[0]);
     printf("Debug levels: all, cpu, mem, virtio, inst, or hex value\n");
