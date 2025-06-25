@@ -30,6 +30,14 @@ void rv_init(rv *cpu, void *mach) {
                   | rv_ext('S') /* Supervisor Mode */
                   | rv_ext('U') /* User Mode */;
   cpu->priv = RV_PMACH;
+  
+  /* Initialize TLB entries */
+  for (u32 s = 0; s < RV_TLB_SETS; s++) {
+    for (u32 w = 0; w < RV_TLB_WAYS; w++) {
+      cpu->tlb[s][w].valid = 0;
+      cpu->tlb[s][w].lru = 0;
+    }
+  }
 }
 
 /* sign-extend x from h'th bit */
@@ -127,8 +135,10 @@ static rv_res rv_csr_bus(rv *cpu, u32 csr, u32 w, u32 *io) {
 
   /* Invalidate TLB when SATP is written */
   if (w && csr == 0x180) {
-    for (u32 j = 0; j < RV_TLB_ENTRIES; j++) {
-      cpu->tlb[j].valid = 0;
+    for (u32 s = 0; s < RV_TLB_SETS; s++) {
+      for (u32 w = 0; w < RV_TLB_WAYS; w++) {
+        cpu->tlb[s][w].valid = 0;
+      }
     }
   }
 
@@ -173,7 +183,7 @@ static u32 rv_trap_bus(rv *cpu, rv_exception err, u32 tval, rv_access a) {
 }
 
 /* sv32 virtual address -> physical address */
-static u32 rv_vmm(rv *cpu, u32 va, u32 *pa, rv_access access) {
+static inline u32 rv_vmm(rv *cpu, u32 va, u32 *pa, rv_access access) {
   u32 epriv = rv_b(cpu->csr.mstatus, 17) && access != RV_AX
                 ? rv_bf(cpu->csr.mstatus, 12, 11)
                 : cpu->priv; /* effective privilege mode */
@@ -186,12 +196,22 @@ static u32 rv_vmm(rv *cpu, u32 va, u32 *pa, rv_access access) {
     u8 asid = rv_bf(cpu->csr.satp, 30, 22);
     u32 va_page = va & ~0xFFFU;
 
-    /* TLB lookup - search all entries */
-    for (u32 j = 0; j < RV_TLB_ENTRIES; j++) {
-      if (cpu->tlb[j].valid && cpu->tlb[j].va == va_page && cpu->tlb[j].asid == asid) {
-        pte = cpu->tlb[j].pte;
-        i = cpu->tlb[j].level;
+    /* TLB lookup - use set-associative cache */
+    u32 set = (va_page >> 12) & RV_TLB_SET_MASK;
+    for (u32 w = 0; w < RV_TLB_WAYS; w++) {
+      rv_tlb_entry *entry = &cpu->tlb[set][w];
+      if (entry->valid && entry->va == va_page && entry->asid == asid) {
+        pte = entry->pte;
+        i = entry->level;
         tlb_hit = 1;
+        /* Update LRU - this entry is now most recently used */
+        entry->lru = 3;
+        /* Decrement LRU for other entries in set */
+        for (u32 k = 0; k < RV_TLB_WAYS; k++) {
+          if (k != w && cpu->tlb[set][k].lru > 0) {
+            cpu->tlb[set][k].lru--;
+          }
+        }
         break;
       }
     }
@@ -214,24 +234,49 @@ static u32 rv_vmm(rv *cpu, u32 va, u32 *pa, rv_access access) {
     }
 
     if (!tlb_hit) {
-      /* TLB miss - add new entry using round-robin replacement */
-      u32 victim = cpu->tlb_next_victim;
-      cpu->tlb[victim].va = va_page;
-      cpu->tlb[victim].pte = pte;
-      cpu->tlb[victim].level = i;
-      cpu->tlb[victim].asid = asid;
-      cpu->tlb[victim].valid = 1;
-      cpu->tlb_next_victim = (victim + 1) % RV_TLB_ENTRIES;
+      /* TLB miss - find LRU entry in the set for replacement */
+      u32 victim = 0;
+      u8 min_lru = 255;
+      for (u32 w = 0; w < RV_TLB_WAYS; w++) {
+        if (!cpu->tlb[set][w].valid || cpu->tlb[set][w].lru < min_lru) {
+          min_lru = cpu->tlb[set][w].lru;
+          victim = w;
+          if (!cpu->tlb[set][w].valid) break; /* Use invalid entry first */
+        }
+      }
+      
+      /* Insert new entry */
+      rv_tlb_entry *entry = &cpu->tlb[set][victim];
+      entry->va = va_page;
+      entry->pte = pte;
+      entry->level = i;
+      entry->asid = asid;
+      entry->valid = 1;
+      entry->lru = 3;
+      
+      /* Update LRU for other entries */
+      for (u32 w = 0; w < RV_TLB_WAYS; w++) {
+        if (w != victim && cpu->tlb[set][w].lru > 0) {
+          cpu->tlb[set][w].lru--;
+        }
+      }
     }
-    if (rv_b(cpu->csr.mstatus, 19))
+    /* Cache frequently accessed bits for faster checks */
+    u32 mxr = rv_b(cpu->csr.mstatus, 19);
+    u32 sum = rv_b(cpu->csr.mstatus, 18);
+    u32 pte_u = rv_b(pte, 4);
+    u32 pte_a = rv_b(pte, 6);
+    u32 pte_d = rv_b(pte, 7);
+    u32 pte_perms = rv_bf(pte, 3, 1);
+    
+    if (mxr)
       pte |= rv_b(pte, 3) << 2;              /* pte.r = pte.x if mxr bit set */
-    if ((!rv_b(pte, 4) && epriv == RV_PUSER) /* u-bit not set */
-        || (epriv == RV_PSUPER && !rv_b(cpu->csr.mstatus, 18) &&
-            rv_b(pte, 4))                       /* mstatus.sum bit wrong */
-        || ~rv_bf(pte, 3, 1) & access           /* mismatching access type*/
-        || (i && rv_bf(pte, 19, 10))            /* misaligned megapage */
-        || !rv_b(pte, 6)                        /* pte.a == 0 */
-        || ((access & RV_AW) && !rv_b(pte, 7))) /* writing and pte.d == 0 */
+    if ((!pte_u && epriv == RV_PUSER)       /* u-bit not set */
+        || (epriv == RV_PSUPER && !sum && pte_u) /* mstatus.sum bit wrong */
+        || (~pte_perms & access)             /* mismatching access type*/
+        || (i && rv_bf(pte, 19, 10))         /* misaligned megapage */
+        || !pte_a                            /* pte.a == 0 */
+        || ((access & RV_AW) && !pte_d))     /* writing and pte.d == 0 */
       return RV_PAGEFAULT;
     /* pa.ppn[1:i] = pte.ppn[1:i] */
     *pa = rv_tbf(pte, 31, 10 + 10 * i, 12 + 10 * i) | rv_bf(va, 11 + 10 * i, 0);
@@ -791,8 +836,10 @@ u32 rv_step(rv *cpu) {
             if (cpu->priv == RV_PSUPER && (cpu->csr.mstatus & (1 << 20)))
               return rv_trap(cpu, RV_EILL, tval);
             /* Invalidate all TLB entries */
-            for (u32 j = 0; j < RV_TLB_ENTRIES; j++) {
-              cpu->tlb[j].valid = 0;
+            for (u32 s = 0; s < RV_TLB_SETS; s++) {
+              for (u32 w = 0; w < RV_TLB_WAYS; w++) {
+                cpu->tlb[s][w].valid = 0;
+              }
             }
           } else if (!rv_irs1(i) && !rv_irs2(i) && !rv_if7(i)) {
             /*I ecall */

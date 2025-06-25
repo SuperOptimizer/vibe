@@ -8,14 +8,19 @@ vibe is a RISC-V emulator written in C23 that implements the RV32I[MAC] instruct
 
 ## Build Commands
 
+### Building the Emulator
+
 ```bash
 # Create build directory and configure with CMake
 mkdir -p cmake-build-debug
 cd cmake-build-debug
-cmake ..
+cmake .. -DCMAKE_BUILD_TYPE=Debug  # Options: Debug, Release, RelWithDebInfo, MinSizeRel
 
 # Build the project
 make -j8
+
+# Build with sanitizers (for debugging)
+make vibe-san
 
 # Run the emulator (from project root)
 ./cmake-build-debug/vibe                                  # Use default firmware/dtb/disk
@@ -23,9 +28,22 @@ make -j8
 ./cmake-build-debug/vibe firmware.bin device.dtb disk.img 1000000 # Run for N instructions
 ```
 
+### Building Linux Images with Buildroot
+
+```bash
+# Build Linux kernel, device tree, and root filesystem
+cd linux
+./do_build.sh
+
+# This will create:
+# - vmlinux: Linux kernel binary
+# - vibe.dtb: Device tree blob
+# - rootfs.ext2: Root filesystem image
+```
+
 ## virtio Device Support
 
-The emulator includes virtio-mmio devices for network and block storage:
+The emulator includes virtio-mmio devices for network, block storage, and random number generation:
 
 - **virtio-net**: Provides network connectivity via TAP interface (Linux only)
   - Supports basic Ethernet frame transmission/reception
@@ -34,6 +52,11 @@ The emulator includes virtio-mmio devices for network and block storage:
 - **virtio-blk**: Provides block storage access
   - Supports read/write operations on disk images
   - Compatible with ext2/3/4 filesystems
+  - Root device is typically `/dev/vda`
+
+- **virtio-rng**: Provides random number generation
+  - Supplies entropy to the guest kernel
+  - Essential for cryptographic operations
 
 ## Architecture
 
@@ -50,13 +73,12 @@ The emulator has a modular architecture with clear separation of concerns:
 ### Hardware Peripherals (`src/hw/`)
 
 - **CLINT**: Core-Local Interruptor for timer and software interrupts
-- **PLIC**: Platform-Level Interrupt Controller for external interrupts  
+- **PLIC**: Platform-Level Interrupt Controller for external interrupts (32 devices)
 - **UART**: Two UART devices for serial communication with FIFO buffers
 - **RTC**: Real-time clock for kernel timekeeping
 - **virtio-net**: Network device for Ethernet communication (tap interface)
 - **virtio-blk**: Block device for disk storage access
 - **virtio-rng**: Random number generator for kernel entropy
-- **NVMe**: NVMe 1.4 storage controller with admin and I/O queue support
 
 ### Memory Map
 
@@ -80,7 +102,11 @@ The emulator has a modular architecture with clear separation of concerns:
 
 ## Development Notes
 
-- The project uses C23 standard with `-O3` optimization
+- The project uses C23 standard with various optimization levels
+- Release builds use `-O3 -march=native -flto` for maximum performance
+- Debug builds include full debugging symbols
+- Sanitizer builds (`vibe-san`) enable AddressSanitizer and UndefinedBehaviorSanitizer
 - Code formatting follows LLVM style (see `.clang-format`)
-- The `curses` library is required for the terminal UI
+- Required libraries: `curses`, `tinfo`, `dl`
 - Firmware images and device tree files are loaded from the `linux/` directory
+- Buildroot 2023.11.1 is used for creating Linux root filesystems

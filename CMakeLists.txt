@@ -22,12 +22,14 @@ set(VIBE_SOURCES
 
 # Main executable
 add_executable(vibe ${VIBE_SOURCES})
-target_link_libraries(vibe curses)
+target_link_libraries(vibe curses  tinfo dl)
+#target_link_options(vibe PUBLIC -static)
 
 # Release configuration - maximum optimization
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(vibe PUBLIC 
-        -O3 
+        -O3
+            -g3
         -march=native 
         -mtune=native 
         -flto 

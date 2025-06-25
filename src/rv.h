@@ -43,6 +43,9 @@ typedef struct rv_csr {
 
 
 #define RV_TLB_ENTRIES 32
+#define RV_TLB_SETS 8
+#define RV_TLB_WAYS 4
+#define RV_TLB_SET_MASK (RV_TLB_SETS - 1)
 
 typedef struct rv_tlb_entry {
   u32 va;   /* virtual address (page aligned) */
@@ -50,7 +53,7 @@ typedef struct rv_tlb_entry {
   u8 valid; /* valid bit */
   u8 level; /* page table level (0 or 1 for SV32) */
   u8 asid;  /* address space ID (from SATP) */
-  u8 pad;
+  u8 lru;   /* LRU counter for replacement */
 } rv_tlb_entry;
 
 struct rv {
@@ -61,8 +64,7 @@ struct rv {
   rv_csr csr;                       /* csr state */
   u32 priv;                         /* current privilege level*/
   u32 res, res_valid;               /* lr/sc reservation set */
-  rv_tlb_entry tlb[RV_TLB_ENTRIES]; /* TLB entries */
-  u32 tlb_next_victim;              /* next TLB entry to replace (round-robin) */
+  rv_tlb_entry tlb[RV_TLB_SETS][RV_TLB_WAYS]; /* 8-way set associative TLB */
 };
 
 /* Initialize CPU. You can call this again on `cpu` to reset it. */
