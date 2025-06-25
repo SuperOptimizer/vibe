@@ -10,8 +10,8 @@
     };
 
     chosen {
-        bootargs = "earlycon=sifive,0x3000000 console=ttySIF0 root=/dev/vda ro";
-        stdout-path = "/soc/serial@3000000";
+        bootargs = "earlycon=sifive,0x3000000 console=ttySIF0,115200n8 root=/dev/vda ro loglevel=7 debug printk.time=1 printk.devkmsg=on";
+        stdout-path = "/soc/serial@3000000:115200n8";
     };
 
     memory@80000000 {

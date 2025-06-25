@@ -42,18 +42,26 @@ typedef struct rv_csr {
 } rv_csr;
 
 
-#define RV_TLB_ENTRIES 32
-#define RV_TLB_SETS 8
-#define RV_TLB_WAYS 4
-#define RV_TLB_SET_MASK (RV_TLB_SETS - 1)
+/* TLB configuration - separate I/D TLBs for better performance */
+#define RV_ITLB_SETS 16      /* Instruction TLB: 16 sets */
+#define RV_ITLB_WAYS 2       /* 2-way set associative */
+#define RV_DTLB_SETS 16      /* Data TLB: 16 sets */
+#define RV_DTLB_WAYS 4       /* 4-way set associative */
+#define RV_ITLB_SET_MASK (RV_ITLB_SETS - 1)
+#define RV_DTLB_SET_MASK (RV_DTLB_SETS - 1)
+
+/* Dedicated superpage TLB entries */
+#define RV_STLB_ENTRIES 8    /* 8 fully-associative superpage entries */
 
 typedef struct rv_tlb_entry {
-  u32 va;   /* virtual address (page aligned) */
-  u32 pte;  /* page table entry */
-  u8 valid; /* valid bit */
-  u8 level; /* page table level (0 or 1 for SV32) */
-  u8 asid;  /* address space ID (from SATP) */
-  u8 lru;   /* LRU counter for replacement */
+  u32 va;       /* virtual address (page aligned) */
+  u32 pa;       /* physical address (pre-computed) */
+  u32 pte;      /* page table entry */
+  u8 valid : 1; /* valid bit */
+  u8 global : 1;/* global page (G bit) */
+  u8 level : 1; /* page table level (0=4KB, 1=4MB) */
+  u8 asid;      /* address space ID (from SATP) */
+  u8 lru;       /* LRU counter for replacement */
 } rv_tlb_entry;
 
 struct rv {
@@ -64,7 +72,10 @@ struct rv {
   rv_csr csr;                       /* csr state */
   u32 priv;                         /* current privilege level*/
   u32 res, res_valid;               /* lr/sc reservation set */
-  rv_tlb_entry tlb[RV_TLB_SETS][RV_TLB_WAYS]; /* 8-way set associative TLB */
+  rv_tlb_entry itlb[RV_ITLB_SETS][RV_ITLB_WAYS]; /* Instruction TLB */
+  rv_tlb_entry dtlb[RV_DTLB_SETS][RV_DTLB_WAYS]; /* Data TLB */
+  rv_tlb_entry stlb[RV_STLB_ENTRIES];            /* Superpage TLB */
+  u8 current_asid;                  /* Cached ASID from SATP */
 };
 
 /* Initialize CPU. You can call this again on `cpu` to reset it. */

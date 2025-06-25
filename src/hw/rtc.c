@@ -68,6 +68,13 @@ bus_error hw_rtc_bus(hw_rtc *rtc, u32 addr, u8 *data, bool is_store, u32 width) 
 }
 
 void hw_rtc_update(hw_rtc *rtc) {
+  static int i = 0;
+  i++;
+  if (i == 1000) {
+    i = 0;
+  } else {
+    return;
+  }
   struct timeval tv;
   gettimeofday(&tv, NULL);
 

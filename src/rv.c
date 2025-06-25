@@ -5,15 +5,15 @@
 /* Convert bus_error to rv_res */
 static inline rv_res bus_error_to_rv_res(bus_error err) {
   switch (err) {
-    case BUS_OK:
-      return RV_OK;
-    case BUS_UNMAPPED:
-    case BUS_INVALID:
-      return RV_BAD;
-    case BUS_ALIGN:
-      return RV_BAD_ALIGN;
-    default:
-      return RV_BAD;
+  case BUS_OK:
+    return RV_OK;
+  case BUS_UNMAPPED:
+  case BUS_INVALID:
+    return RV_BAD;
+  case BUS_ALIGN:
+    return RV_BAD_ALIGN;
+  default:
+    return RV_BAD;
   }
 }
 
@@ -30,52 +30,66 @@ void rv_init(rv *cpu, void *mach) {
                   | rv_ext('S') /* Supervisor Mode */
                   | rv_ext('U') /* User Mode */;
   cpu->priv = RV_PMACH;
-  
-  /* Initialize TLB entries */
-  for (u32 s = 0; s < RV_TLB_SETS; s++) {
-    for (u32 w = 0; w < RV_TLB_WAYS; w++) {
-      cpu->tlb[s][w].valid = 0;
-      cpu->tlb[s][w].lru = 0;
+
+  /* Initialize instruction TLB */
+  for (u32 s = 0; s < RV_ITLB_SETS; s++) {
+    for (u32 w = 0; w < RV_ITLB_WAYS; w++) {
+      cpu->itlb[s][w].valid = 0;
+      cpu->itlb[s][w].lru = 0;
     }
   }
+
+  /* Initialize data TLB */
+  for (u32 s = 0; s < RV_DTLB_SETS; s++) {
+    for (u32 w = 0; w < RV_DTLB_WAYS; w++) {
+      cpu->dtlb[s][w].valid = 0;
+      cpu->dtlb[s][w].lru = 0;
+    }
+  }
+
+  /* Initialize superpage TLB */
+  for (u32 i = 0; i < RV_STLB_ENTRIES; i++) {
+    cpu->stlb[i].valid = 0;
+    cpu->stlb[i].lru = 0;
+  }
+
+  cpu->current_asid = 0;
 }
 
 /* sign-extend x from h'th bit */
 static u32 rv_signext(u32 x, u32 h) { return (0 - (x >> h)) << h | x; }
 
-#define RV_SBIT 0x80000000                    /* sign bit */
+#define RV_SBIT   0x80000000               /* sign bit */
 #define rv_sgn(x) (!!((u32)(x) & RV_SBIT)) /* extract sign */
 
 /* compute overflow */
 #define rv_ovf(a, b, y) ((((a) ^ (b)) & RV_SBIT) && (((y) ^ (a)) & RV_SBIT))
 
-#define rv_bf(i, h, l)                                                         \
-  (((i) >> (l)) & ((1 << ((h) - (l) + 1)) - 1))    /* extract bit field */
-#define rv_b(i, l) rv_bf(i, l, l)                  /* extract bit */
-#define rv_tb(i, l, o) (rv_b(i, l) << (o))         /* translate bit */
-#define rv_tbf(i, h, l, o) (rv_bf(i, h, l) << (o)) /* translate bit field */
+#define rv_bf(i, h, l)     (((i) >> (l)) & ((1 << ((h) - (l) + 1)) - 1)) /* extract bit field */
+#define rv_b(i, l)         rv_bf(i, l, l)                                /* extract bit */
+#define rv_tb(i, l, o)     (rv_b(i, l) << (o))                           /* translate bit */
+#define rv_tbf(i, h, l, o) (rv_bf(i, h, l) << (o))                       /* translate bit field */
 
 /* instruction field macros */
-#define rv_ioph(i) rv_bf(i, 6, 5)                     /* [h]i bits of opcode */
-#define rv_iopl(i) rv_bf(i, 4, 2)                     /* [l]o bits of opcode */
-#define rv_if3(i) rv_bf(i, 14, 12)                    /* funct3 */
-#define rv_if5(i) rv_bf(i, 31, 27)                    /* funct5 */
-#define rv_if7(i) rv_bf(i, 31, 25)                    /* funct7 */
-#define rv_ird(i) rv_bf(i, 11, 7)                     /* rd */
-#define rv_irs1(i) rv_bf(i, 19, 15)                   /* rs1 */
-#define rv_irs2(i) rv_bf(i, 24, 20)                   /* rs2 */
-#define rv_iimm_i(i) rv_signext(rv_bf(i, 31, 20), 11) /* imm. for I-type */
-#define rv_iimm_iu(i) rv_bf(i, 31, 20) /* zero-ext'd. imm. for I-type */
-#define rv_iimm_s(i)                                                           \
-  (rv_signext(rv_tbf(i, 31, 25, 5), 11) | rv_tbf(i, 30, 25, 5) |               \
-   rv_bf(i, 11, 7))                        /* imm. for S-type */
-#define rv_iimm_u(i) rv_tbf(i, 31, 12, 12) /* imm. for U-type */
-#define rv_iimm_b(i)                                                           \
-  (rv_signext(rv_tb(i, 31, 12), 12) | rv_tb(i, 7, 11) | rv_tbf(i, 30, 25, 5) | \
+#define rv_ioph(i)    rv_bf(i, 6, 5)                   /* [h]i bits of opcode */
+#define rv_iopl(i)    rv_bf(i, 4, 2)                   /* [l]o bits of opcode */
+#define rv_if3(i)     rv_bf(i, 14, 12)                 /* funct3 */
+#define rv_if5(i)     rv_bf(i, 31, 27)                 /* funct5 */
+#define rv_if7(i)     rv_bf(i, 31, 25)                 /* funct7 */
+#define rv_ird(i)     rv_bf(i, 11, 7)                  /* rd */
+#define rv_irs1(i)    rv_bf(i, 19, 15)                 /* rs1 */
+#define rv_irs2(i)    rv_bf(i, 24, 20)                 /* rs2 */
+#define rv_iimm_i(i)  rv_signext(rv_bf(i, 31, 20), 11) /* imm. for I-type */
+#define rv_iimm_iu(i) rv_bf(i, 31, 20)                 /* zero-ext'd. imm. for I-type */
+#define rv_iimm_s(i)                                                                                                   \
+  (rv_signext(rv_tbf(i, 31, 25, 5), 11) | rv_tbf(i, 30, 25, 5) | rv_bf(i, 11, 7)) /* imm. for S-type */
+#define rv_iimm_u(i) rv_tbf(i, 31, 12, 12)                                        /* imm. for U-type */
+#define rv_iimm_b(i)                                                                                                   \
+  (rv_signext(rv_tb(i, 31, 12), 12) | rv_tb(i, 7, 11) | rv_tbf(i, 30, 25, 5) |                                         \
    rv_tbf(i, 11, 8, 1)) /* imm. for B-type */
-#define rv_iimm_j(i)                                                           \
-  (rv_signext(rv_tb(i, 31, 20), 20) | rv_tbf(i, 19, 12, 12) |                  \
-   rv_tb(i, 20, 11) | rv_tbf(i, 30, 21, 1))     /* imm. for J-type */
+#define rv_iimm_j(i)                                                                                                   \
+  (rv_signext(rv_tb(i, 31, 20), 20) | rv_tbf(i, 19, 12, 12) | rv_tb(i, 20, 11) |                                       \
+   rv_tbf(i, 30, 21, 1))                        /* imm. for J-type */
 #define rv_isz(i) (rv_bf(i, 1, 0) == 3 ? 4 : 2) /* instruction size */
 
 /* load register */
@@ -84,15 +98,14 @@ static u32 rv_lr(rv *cpu, u8 i) { return cpu->r[i]; }
 /* store register */
 static void rv_sr(rv *cpu, u8 i, u32 v) { cpu->r[i] = i ? v : 0; }
 
-#define RV_CSR(num, r, w, dst) /* check if we are accessing csr `num` */       \
+#define RV_CSR(num, r, w, dst) /* check if we are accessing csr `num` */                                               \
   y = ((csr == (num)) ? (rm = r, wm = w, &cpu->csr.dst) : y)
 
 /* csr bus access -- we model csrs as an internal memory bus */
 static rv_res rv_csr_bus(rv *cpu, u32 csr, u32 w, u32 *io) {
   u32 *y = NULL /* phys. register */, wm /* writable bits */ = -1U, rm = -1U;
   u32 rw = rv_bf(csr, 11, 10), priv = rv_bf(csr, 9, 8);
-  if ((w && rw == 3) || cpu->priv < priv ||
-      (csr == 0x180 && cpu->priv == RV_PSUPER && rv_b(cpu->csr.mstatus, 20)))
+  if ((w && rw == 3) || cpu->priv < priv || (csr == 0x180 && cpu->priv == RV_PSUPER && rv_b(cpu->csr.mstatus, 20)))
     return RV_BAD; /* invalid access OR writing to satp with tvm=1 */
   /*     id     read mask   write mask  phys reg         csr name */
   RV_CSR(0x100, 0x800DE762, 0x800DE762, mstatus);    /*C sstatus */
@@ -128,16 +141,37 @@ static rv_res rv_csr_bus(rv *cpu, u32 csr, u32 w, u32 *io) {
   RV_CSR(0xF12, 0xFFFFFFFF, 0x00000000, marchid);    /*C marchid */
   RV_CSR(0xF13, 0xFFFFFFFF, 0x00000000, mimpid);     /*C mimpid */
   RV_CSR(0xF14, 0xFFFFFFFF, 0xFFFFFFFF, mhartid);    /*C mhartid */
-  if (!y)
-    return RV_BAD;                       /* invalid csr */
-  *io = w ? *io : (*y & rm);             /* only read allowed bits */
-  *y = w ? (*y & ~wm) | (*io & wm) : *y; /* only write allowed bits  */
+  if (!y) return RV_BAD;                             /* invalid csr */
+  *io = w ? *io : (*y & rm);                         /* only read allowed bits */
+  *y = w ? (*y & ~wm) | (*io & wm) : *y;             /* only write allowed bits  */
 
   /* Invalidate TLB when SATP is written */
   if (w && csr == 0x180) {
-    for (u32 s = 0; s < RV_TLB_SETS; s++) {
-      for (u32 w = 0; w < RV_TLB_WAYS; w++) {
-        cpu->tlb[s][w].valid = 0;
+    /* Update cached ASID */
+    cpu->current_asid = rv_bf(cpu->csr.satp, 30, 22);
+
+    /* Invalidate all non-global entries in I-TLB */
+    for (u32 s = 0; s < RV_ITLB_SETS; s++) {
+      for (u32 w = 0; w < RV_ITLB_WAYS; w++) {
+        if (!cpu->itlb[s][w].global) {
+          cpu->itlb[s][w].valid = 0;
+        }
+      }
+    }
+
+    /* Invalidate all non-global entries in D-TLB */
+    for (u32 s = 0; s < RV_DTLB_SETS; s++) {
+      for (u32 w = 0; w < RV_DTLB_WAYS; w++) {
+        if (!cpu->dtlb[s][w].global) {
+          cpu->dtlb[s][w].valid = 0;
+        }
+      }
+    }
+
+    /* Invalidate all non-global entries in S-TLB */
+    for (u32 i = 0; i < RV_STLB_ENTRIES; i++) {
+      if (!cpu->stlb[i].global) {
+        cpu->stlb[i].valid = 0;
       }
     }
   }
@@ -149,22 +183,16 @@ static rv_res rv_csr_bus(rv *cpu, u32 csr, u32 w, u32 *io) {
 static rv_exception rv_trap(rv *cpu, u32 cause, u32 tval) {
   u32 is_interrupt = !!(cause & 0x80000000), rcause = cause & ~0x80000000;
   rv_priv xp = /* destination privilege, switch from y = cpu->priv to this */
-      (cpu->priv < RV_PMACH) &&
-      ((is_interrupt ? cpu->csr.mideleg : cpu->csr.medeleg) &
-       (1 << rcause))
-        ? RV_PSUPER
-        : RV_PMACH;
-  u32 *xtvec = &cpu->csr.mtvec, *xepc = &cpu->csr.mepc,
-      *xcause = &cpu->csr.mcause, *xtval = &cpu->csr.mtval;
+      (cpu->priv < RV_PMACH) && ((is_interrupt ? cpu->csr.mideleg : cpu->csr.medeleg) & (1 << rcause)) ? RV_PSUPER
+                                                                                                       : RV_PMACH;
+  u32 *xtvec = &cpu->csr.mtvec, *xepc = &cpu->csr.mepc, *xcause = &cpu->csr.mcause, *xtval = &cpu->csr.mtval;
   u32 xie = rv_b(cpu->csr.mstatus, xp);
   if (xp == RV_PSUPER) /* select s-mode regs */
-    xtvec = &cpu->csr.stvec, xepc = &cpu->csr.sepc, xcause = &cpu->csr.scause,
-        xtval = &cpu->csr.stval;
-  cpu->csr.mstatus &= (xp == RV_PMACH
-                         ? 0xFFFFE777                          /* {mpp, mie, mpie} <- 0 */
-                         : 0xFFFFFEDD);                        /* {spp, sie, spie} <- 0 */
+    xtvec = &cpu->csr.stvec, xepc = &cpu->csr.sepc, xcause = &cpu->csr.scause, xtval = &cpu->csr.stval;
+  cpu->csr.mstatus &= (xp == RV_PMACH ? 0xFFFFE777             /* {mpp, mie, mpie} <- 0 */
+                                      : 0xFFFFFEDD);           /* {spp, sie, spie} <- 0 */
   cpu->csr.mstatus |= (cpu->priv << (xp == RV_PMACH ? 11 : 8)) /* xpp <- y */
-      | xie << (4 + xp);                                       /* xpie <- xie */
+                      | xie << (4 + xp);                       /* xpie <- xie */
   *xepc = cpu->pc;                                             /* xepc <- pc */
   *xcause = rcause | (is_interrupt << 31);                     /* xcause <- cause */
   *xtval = tval;                                               /* xtval <- tval */
@@ -182,110 +210,152 @@ static u32 rv_trap_bus(rv *cpu, rv_exception err, u32 tval, rv_access a) {
   return rv_trap(cpu, ex[(a == RV_AW ? 2 : a == RV_AR) * 3 + err - 1], tval);
 }
 
+/* TLB lookup helper - check superpage TLB first */
+static inline rv_tlb_entry *rv_tlb_lookup_stlb(rv *cpu, u32 va_page, u8 asid) {
+  for (u32 i = 0; i < RV_STLB_ENTRIES; i++) {
+    rv_tlb_entry *entry = &cpu->stlb[i];
+    if (entry->valid && (entry->va & ~0x3FFFFF) == (va_page & ~0x3FFFFF) && (entry->global || entry->asid == asid)) {
+      /* Update LRU */
+      entry->lru = RV_STLB_ENTRIES - 1;
+      for (u32 j = 0; j < RV_STLB_ENTRIES; j++) {
+        if (j != i && cpu->stlb[j].lru > 0) cpu->stlb[j].lru--;
+      }
+      return entry;
+    }
+  }
+  return NULL;
+}
+
 /* sv32 virtual address -> physical address */
 static inline u32 rv_vmm(rv *cpu, u32 va, u32 *pa, rv_access access) {
-  u32 epriv = rv_b(cpu->csr.mstatus, 17) && access != RV_AX
-                ? rv_bf(cpu->csr.mstatus, 12, 11)
-                : cpu->priv; /* effective privilege mode */
+  u32 epriv = rv_b(cpu->csr.mstatus, 17) && access != RV_AX ? rv_bf(cpu->csr.mstatus, 12, 11)
+                                                            : cpu->priv; /* effective privilege mode */
   if (!rv_b(cpu->csr.satp, 31) || epriv > RV_PSUPER) {
     *pa = va; /* if !satp.mode, no translation */
-  } else {
-    u32 ppn /* satp.ppn */ = rv_bf(cpu->csr.satp, 21, 0),
-        a /* satp.ppn * PAGESIZE */ = ppn << 12, i /* LEVELS - 1 */ = 1,
-        pte, pte_address, tlb_hit = 0;
-    u8 asid = rv_bf(cpu->csr.satp, 30, 22);
-    u32 va_page = va & ~0xFFFU;
-
-    /* TLB lookup - use set-associative cache */
-    u32 set = (va_page >> 12) & RV_TLB_SET_MASK;
-    for (u32 w = 0; w < RV_TLB_WAYS; w++) {
-      rv_tlb_entry *entry = &cpu->tlb[set][w];
-      if (entry->valid && entry->va == va_page && entry->asid == asid) {
-        pte = entry->pte;
-        i = entry->level;
-        tlb_hit = 1;
-        /* Update LRU - this entry is now most recently used */
-        entry->lru = 3;
-        /* Decrement LRU for other entries in set */
-        for (u32 k = 0; k < RV_TLB_WAYS; k++) {
-          if (k != w && cpu->tlb[set][k].lru > 0) {
-            cpu->tlb[set][k].lru--;
-          }
-        }
-        break;
-      }
-    }
-
-    while (!tlb_hit) {
-      /* pte_address = a + va.vpn[i] * PTESIZE */
-      pte_address = a + (rv_bf(va, 21 + 10 * i, 12 + 10 * i) << 2);
-      rv_res res = bus_error_to_rv_res(mach_bus(cpu->mach, pte_address, (u8 *)&pte, 0, 4));
-      if (res != RV_OK)
-        return res;
-      rv_endcvt((u8 *)&pte, (u8 *)&pte, 4, 0);
-      if (!rv_b(pte, 0) || (!rv_b(pte, 1) && rv_b(pte, 2)))
-        return RV_PAGEFAULT; /* pte.v == 0, or (pte.r == 0 and pte.w == 1) */
-      if (rv_b(pte, 1) || rv_b(pte, 3))
-        break; /* if pte.r = 1 or pte.x = 1, this is a leaf page */
-      if (i == 0)
-        return RV_PAGEFAULT; /* if i - 1 < 0, pagefault */
-      i = i - 1;
-      a = rv_tbf(pte, 31, 10, 12); /* a = pte.ppn[*] * PAGESIZE */
-    }
-
-    if (!tlb_hit) {
-      /* TLB miss - find LRU entry in the set for replacement */
-      u32 victim = 0;
-      u8 min_lru = 255;
-      for (u32 w = 0; w < RV_TLB_WAYS; w++) {
-        if (!cpu->tlb[set][w].valid || cpu->tlb[set][w].lru < min_lru) {
-          min_lru = cpu->tlb[set][w].lru;
-          victim = w;
-          if (!cpu->tlb[set][w].valid) break; /* Use invalid entry first */
-        }
-      }
-      
-      /* Insert new entry */
-      rv_tlb_entry *entry = &cpu->tlb[set][victim];
-      entry->va = va_page;
-      entry->pte = pte;
-      entry->level = i;
-      entry->asid = asid;
-      entry->valid = 1;
-      entry->lru = 3;
-      
-      /* Update LRU for other entries */
-      for (u32 w = 0; w < RV_TLB_WAYS; w++) {
-        if (w != victim && cpu->tlb[set][w].lru > 0) {
-          cpu->tlb[set][w].lru--;
-        }
-      }
-    }
-    /* Cache frequently accessed bits for faster checks */
-    u32 mxr = rv_b(cpu->csr.mstatus, 19);
-    u32 sum = rv_b(cpu->csr.mstatus, 18);
-    u32 pte_u = rv_b(pte, 4);
-    u32 pte_a = rv_b(pte, 6);
-    u32 pte_d = rv_b(pte, 7);
-    u32 pte_perms = rv_bf(pte, 3, 1);
-    
-    if (mxr)
-      pte |= rv_b(pte, 3) << 2;              /* pte.r = pte.x if mxr bit set */
-    if ((!pte_u && epriv == RV_PUSER)       /* u-bit not set */
-        || (epriv == RV_PSUPER && !sum && pte_u) /* mstatus.sum bit wrong */
-        || (~pte_perms & access)             /* mismatching access type*/
-        || (i && rv_bf(pte, 19, 10))         /* misaligned megapage */
-        || !pte_a                            /* pte.a == 0 */
-        || ((access & RV_AW) && !pte_d))     /* writing and pte.d == 0 */
-      return RV_PAGEFAULT;
-    /* pa.ppn[1:i] = pte.ppn[1:i] */
-    *pa = rv_tbf(pte, 31, 10 + 10 * i, 12 + 10 * i) | rv_bf(va, 11 + 10 * i, 0);
+    return RV_OK;
   }
+
+  u32 va_page = va & ~0xFFFU;
+  u8 asid = cpu->current_asid; /* Use cached ASID */
+  rv_tlb_entry *tlb_entry = NULL;
+
+  /* Check superpage TLB first (for 4MB pages) */
+  tlb_entry = rv_tlb_lookup_stlb(cpu, va_page, asid);
+  if (tlb_entry && tlb_entry->level == 1) {
+    *pa = tlb_entry->pa | (va & 0x3FFFFF); /* Use pre-computed PA */
+    goto permission_check;
+  }
+
+  /* Select appropriate TLB based on access type */
+  rv_tlb_entry *tlb_base;
+  u32 n_sets, n_ways, set_mask;
+  if (access == RV_AX) {
+    tlb_base = &cpu->itlb[0][0];
+    n_sets = RV_ITLB_SETS;
+    n_ways = RV_ITLB_WAYS;
+    set_mask = RV_ITLB_SET_MASK;
+  } else {
+    tlb_base = &cpu->dtlb[0][0];
+    n_sets = RV_DTLB_SETS;
+    n_ways = RV_DTLB_WAYS;
+    set_mask = RV_DTLB_SET_MASK;
+  }
+
+  /* Standard TLB lookup */
+  u32 set = (va_page >> 12) & set_mask;
+  for (u32 w = 0; w < n_ways; w++) {
+    rv_tlb_entry *entry = tlb_base + (set * n_ways + w);
+    if (entry->valid && entry->va == va_page && (entry->global || entry->asid == asid)) {
+      tlb_entry = entry;
+      /* Update LRU */
+      entry->lru = n_ways - 1;
+      for (u32 k = 0; k < n_ways; k++) {
+        if (k != w && (tlb_base + (set * n_ways + k))->lru > 0) (tlb_base + (set * n_ways + k))->lru--;
+      }
+      *pa = entry->pa | (va & 0xFFF); /* Use pre-computed PA */
+      goto permission_check;
+    }
+  }
+
+  /* TLB miss - perform page table walk */
+  u32 ppn = rv_bf(cpu->csr.satp, 21, 0);
+  u32 a = ppn << 12, i = 1, pte, pte_address;
+
+  while (1) {
+    pte_address = a + (rv_bf(va, 21 + 10 * i, 12 + 10 * i) << 2);
+    rv_res res = bus_error_to_rv_res(mach_bus(cpu->mach, pte_address, (u8 *)&pte, 0, 4));
+    if (res != RV_OK) return res;
+    rv_endcvt((u8 *)&pte, (u8 *)&pte, 4, 0);
+    if (!rv_b(pte, 0) || (!rv_b(pte, 1) && rv_b(pte, 2))) return RV_PAGEFAULT;
+    if (rv_b(pte, 1) || rv_b(pte, 3)) break; /* Leaf page */
+    if (i == 0) return RV_PAGEFAULT;
+    i = i - 1;
+    a = rv_tbf(pte, 31, 10, 12);
+  }
+
+  /* Compute physical address */
+  u32 computed_pa = rv_tbf(pte, 31, 10 + 10 * i, 12 + 10 * i) | rv_bf(va, 11 + 10 * i, 0);
+  *pa = computed_pa;
+
+  /* Insert into appropriate TLB */
+  if (i == 1 && !rv_bf(pte, 19, 10)) { /* Valid 4MB superpage */
+    /* Find LRU entry in STLB */
+    u32 victim = 0;
+    u8 min_lru = 255;
+    for (u32 j = 0; j < RV_STLB_ENTRIES; j++) {
+      if (!cpu->stlb[j].valid || cpu->stlb[j].lru < min_lru) {
+        min_lru = cpu->stlb[j].lru;
+        victim = j;
+        if (!cpu->stlb[j].valid) break;
+      }
+    }
+    tlb_entry = &cpu->stlb[victim];
+    tlb_entry->pa = computed_pa & ~0x3FFFFF; /* Store base PA */
+  } else {
+    /* Regular page - find LRU entry in set */
+    u32 victim = 0;
+    u8 min_lru = 255;
+    for (u32 w = 0; w < n_ways; w++) {
+      rv_tlb_entry *e = tlb_base + (set * n_ways + w);
+      if (!e->valid || e->lru < min_lru) {
+        min_lru = e->lru;
+        victim = w;
+        if (!e->valid) break;
+      }
+    }
+    tlb_entry = tlb_base + (set * n_ways + victim);
+    tlb_entry->pa = computed_pa & ~0xFFF; /* Store base PA */
+  }
+
+  /* Fill TLB entry */
+  tlb_entry->va = va_page;
+  tlb_entry->pte = pte;
+  tlb_entry->level = i;
+  tlb_entry->asid = asid;
+  tlb_entry->global = rv_b(pte, 5); /* G bit */
+  tlb_entry->valid = 1;
+  tlb_entry->lru = (i == 1 && tlb_entry == &cpu->stlb[0]) ? RV_STLB_ENTRIES - 1 : n_ways - 1;
+
+permission_check:
+  /* Fast permission check using cached PTE */
+  pte = tlb_entry->pte;
+  u32 mxr = rv_b(cpu->csr.mstatus, 19);
+  u32 sum = rv_b(cpu->csr.mstatus, 18);
+  u32 pte_u = rv_b(pte, 4);
+  u32 pte_a = rv_b(pte, 6);
+  u32 pte_d = rv_b(pte, 7);
+  u32 pte_perms = rv_bf(pte, 3, 1);
+
+  if (mxr) pte |= rv_b(pte, 3) << 2;
+  if ((!pte_u && epriv == RV_PUSER) || (epriv == RV_PSUPER && !sum && pte_u) || (~pte_perms & access) || !pte_a ||
+      ((access & RV_AW) && !pte_d))
+    return RV_PAGEFAULT;
+
   return RV_OK;
 }
 
 #define rvm_lo(w) ((w) & (u32)0xFFFFU) /* low 16 bits of 32-bit word */
-#define rvm_hi(w) ((w) >> 16)             /* high 16 bits of 32-bit word */
+#define rvm_hi(w) ((w) >> 16)          /* high 16 bits of 32-bit word */
 
 /* adc 16 bit */
 static u32 rvm_ahh(u32 a, u32 b, u32 cin, u32 *cout) {
@@ -318,50 +388,39 @@ static u32 rvm(u32 a, u32 b, u32 *hi) {
   return x | (y << 16);                 /*   lo   = (y, x)       */
 }
 
-#define rvc_op(c) rv_bf(c, 1, 0)           /* c. op */
-#define rvc_f3(c) rv_bf(c, 15, 13)         /* c. funct3 */
-#define rvc_rp(r) ((r) + 8)                /* c. r' register offsetter */
-#define rvc_ird(c) rv_bf(c, 11, 7)         /* c. ci-format rd/rs1  */
-#define rvc_irpl(c) rvc_rp(rv_bf(c, 4, 2)) /* c. rd'/rs2' (bits 4-2) */
-#define rvc_irph(c) rvc_rp(rv_bf(c, 9, 7)) /* c. rd'/rs1' (bits 9-7) */
-#define rvc_imm_ciw(c)                     /* CIW imm. for c.addi4spn */       \
+#define rvc_op(c)      rv_bf(c, 1, 0)         /* c. op */
+#define rvc_f3(c)      rv_bf(c, 15, 13)       /* c. funct3 */
+#define rvc_rp(r)      ((r) + 8)              /* c. r' register offsetter */
+#define rvc_ird(c)     rv_bf(c, 11, 7)        /* c. ci-format rd/rs1  */
+#define rvc_irpl(c)    rvc_rp(rv_bf(c, 4, 2)) /* c. rd'/rs2' (bits 4-2) */
+#define rvc_irph(c)    rvc_rp(rv_bf(c, 9, 7)) /* c. rd'/rs1' (bits 9-7) */
+#define rvc_imm_ciw(c)                        /* CIW imm. for c.addi4spn */                                            \
   (rv_tbf(c, 10, 7, 6) | rv_tbf(c, 12, 11, 4) | rv_tb(c, 6, 2) | rv_tb(c, 5, 3))
-#define rvc_imm_cl(c) /* CL imm. for c.lw/c.sw */                              \
-  (rv_tb(c, 5, 6) | rv_tbf(c, 12, 10, 3) | rv_tb(c, 6, 2))
-#define rvc_imm_ci(c) /* CI imm. for c.addi/c.li/c.lui */                      \
-  (rv_signext(rv_tb(c, 12, 5), 5) | rv_bf(c, 6, 2))
-#define rvc_imm_ci_b(c) /* CI imm. for c.addi16sp */                           \
-  (rv_signext(rv_tb(c, 12, 9), 9) | rv_tbf(c, 4, 3, 7) | rv_tb(c, 5, 6) |      \
-   rv_tb(c, 2, 5) | rv_tb(c, 6, 4))
-#define rvc_imm_ci_c(c) /* CI imm. for c.lwsp */                               \
-  (rv_tbf(c, 3, 2, 6) | rv_tb(c, 12, 5) | rv_tbf(c, 6, 4, 2))
-#define rvc_imm_cj(c) /* CJ imm. for c.jalr/c.j */                             \
-  (rv_signext(rv_tb(c, 12, 11), 11) | rv_tb(c, 11, 4) | rv_tbf(c, 10, 9, 8) |  \
-   rv_tb(c, 8, 10) | rv_tb(c, 7, 6) | rv_tb(c, 6, 7) | rv_tbf(c, 5, 3, 1) |    \
-   rv_tb(c, 2, 5))
-#define rvc_imm_cb(c) /* CB imm. for c.beqz/c.bnez */                          \
-  (rv_signext(rv_tb(c, 12, 8), 8) | rv_tbf(c, 6, 5, 6) | rv_tb(c, 2, 5) |      \
-   rv_tbf(c, 11, 10, 3) | rv_tbf(c, 4, 3, 1))
-#define rvc_imm_css(c) /* CSS imm. for c.swsp */                               \
-  (rv_tbf(c, 8, 7, 6) | rv_tbf(c, 12, 9, 2))
+#define rvc_imm_cl(c)   /* CL imm. for c.lw/c.sw */ (rv_tb(c, 5, 6) | rv_tbf(c, 12, 10, 3) | rv_tb(c, 6, 2))
+#define rvc_imm_ci(c)   /* CI imm. for c.addi/c.li/c.lui */ (rv_signext(rv_tb(c, 12, 5), 5) | rv_bf(c, 6, 2))
+#define rvc_imm_ci_b(c) /* CI imm. for c.addi16sp */                                                                   \
+  (rv_signext(rv_tb(c, 12, 9), 9) | rv_tbf(c, 4, 3, 7) | rv_tb(c, 5, 6) | rv_tb(c, 2, 5) | rv_tb(c, 6, 4))
+#define rvc_imm_ci_c(c) /* CI imm. for c.lwsp */ (rv_tbf(c, 3, 2, 6) | rv_tb(c, 12, 5) | rv_tbf(c, 6, 4, 2))
+#define rvc_imm_cj(c)   /* CJ imm. for c.jalr/c.j */                                                                   \
+  (rv_signext(rv_tb(c, 12, 11), 11) | rv_tb(c, 11, 4) | rv_tbf(c, 10, 9, 8) | rv_tb(c, 8, 10) | rv_tb(c, 7, 6) |       \
+   rv_tb(c, 6, 7) | rv_tbf(c, 5, 3, 1) | rv_tb(c, 2, 5))
+#define rvc_imm_cb(c) /* CB imm. for c.beqz/c.bnez */                                                                  \
+  (rv_signext(rv_tb(c, 12, 8), 8) | rv_tbf(c, 6, 5, 6) | rv_tb(c, 2, 5) | rv_tbf(c, 11, 10, 3) | rv_tbf(c, 4, 3, 1))
+#define rvc_imm_css(c) /* CSS imm. for c.swsp */ (rv_tbf(c, 8, 7, 6) | rv_tbf(c, 12, 9, 2))
 
 /* macros to assemble all uncompressed instruction types */
-#define rv_i_i(op, f3, rd, rs1, imm) /* I-type */                              \
-  ((imm) << 20 | (rs1) << 15 | (f3) << 12 | (rd) << 7 | (op) << 2 | 3)
-#define rv_i_s(op, f3, rs1, rs2, imm) /* S-type */                             \
-  (rv_bf(imm, 11, 5) << 25 | (rs2) << 20 | (rs1) << 15 | (f3) << 12 |          \
-   rv_bf(imm, 4, 0) << 7 | (op) << 2 | 3)
-#define rv_i_u(op, rd, imm) /* U-type */                                       \
-  ((imm) << 12 | (rd) << 7 | (op) << 2 | 3)
-#define rv_i_r(op, f3, rd, rs1, rs2, f7) /* R-type */                          \
-  ((f7) << 25 | (rs2) << 20 | (rs1) << 15 | (f3) << 12 | (rd) << 7 |           \
+#define rv_i_i(op, f3, rd, rs1, imm)  /* I-type */ ((imm) << 20 | (rs1) << 15 | (f3) << 12 | (rd) << 7 | (op) << 2 | 3)
+#define rv_i_s(op, f3, rs1, rs2, imm) /* S-type */                                                                     \
+  (rv_bf(imm, 11, 5) << 25 | (rs2) << 20 | (rs1) << 15 | (f3) << 12 | rv_bf(imm, 4, 0) << 7 | (op) << 2 | 3)
+#define rv_i_u(op, rd, imm)              /* U-type */ ((imm) << 12 | (rd) << 7 | (op) << 2 | 3)
+#define rv_i_r(op, f3, rd, rs1, rs2, f7) /* R-type */                                                                  \
+  ((f7) << 25 | (rs2) << 20 | (rs1) << 15 | (f3) << 12 | (rd) << 7 | (op) << 2 | 3)
+#define rv_i_j(op, rd, imm) /* J-type */                                                                               \
+  (rv_b(imm, 20) << 31 | rv_bf(imm, 10, 1) << 21 | rv_b(imm, 11) << 20 | rv_bf(imm, 19, 12) << 12 | (rd) << 7 |        \
    (op) << 2 | 3)
-#define rv_i_j(op, rd, imm) /* J-type */                                       \
-  (rv_b(imm, 20) << 31 | rv_bf(imm, 10, 1) << 21 | rv_b(imm, 11) << 20 |       \
-   rv_bf(imm, 19, 12) << 12 | (rd) << 7 | (op) << 2 | 3)
-#define rv_i_b(op, f3, rs1, rs2, imm) /* B-type */                             \
-  (rv_b(imm, 12) << 31 | rv_bf(imm, 10, 5) << 25 | (rs2) << 20 | (rs1) << 15 | \
-   (f3) << 12 | rv_bf(imm, 4, 1) << 8 | rv_b(imm, 11) << 7 | (op) << 2 | 3)
+#define rv_i_b(op, f3, rs1, rs2, imm) /* B-type */                                                                     \
+  (rv_b(imm, 12) << 31 | rv_bf(imm, 10, 5) << 25 | (rs2) << 20 | (rs1) << 15 | (f3) << 12 | rv_bf(imm, 4, 1) << 8 |    \
+   rv_b(imm, 11) << 7 | (op) << 2 | 3)
 
 /* decompress instruction */
 static u32 rvc(u32 c) {
@@ -462,16 +521,13 @@ static u32 rvc(u32 c) {
     } else if (rvc_f3(c) == 4 && !rv_b(c, 12)) {
       /*I c.mv -> add rd, x0, rs2 */
       return rv_i_r(12, 0, rvc_ird(c), 0, rv_bf(c, 6, 2), 0);
-    } else if (rvc_f3(c) == 4 && rv_b(c, 12) && rvc_ird(c) &&
-               !rv_bf(c, 6, 2)) {
+    } else if (rvc_f3(c) == 4 && rv_b(c, 12) && rvc_ird(c) && !rv_bf(c, 6, 2)) {
       /*I c.jalr -> jalr x1, 0(rs1) */
       return rv_i_i(25, 0, 1, rvc_ird(c), 0);
-    } else if (rvc_f3(c) == 4 && rv_b(c, 12) && !rvc_ird(c) &&
-               !rv_bf(c, 6, 2)) {
+    } else if (rvc_f3(c) == 4 && rv_b(c, 12) && !rvc_ird(c) && !rv_bf(c, 6, 2)) {
       /*I c.ebreak -> ebreak */
       return rv_i_i(28, 0, 0, 0, 1);
-    } else if (rvc_f3(c) == 4 && rv_b(c, 12) && rvc_ird(c) &&
-               rv_bf(c, 6, 2)) {
+    } else if (rvc_f3(c) == 4 && rv_b(c, 12) && rvc_ird(c) && rv_bf(c, 6, 2)) {
       /*I c.add -> add rd, rd, rs2 */
       return rv_i_r(12, 0, rvc_ird(c), rvc_ird(c), rv_bf(c, 6, 2), 0);
     } else if (rvc_f3(c) == 6) {
@@ -493,47 +549,37 @@ void rv_endcvt(u8 *in, u8 *out, u32 width, bool is_store) {
   else if (!is_store && width == 2)
     *((u16 *)out) = (u16)in[0] | ((u16)in[1] << 8);
   else if (!is_store && width == 4)
-    *((u32 *)out) = (u32)in[0] | ((u32)in[1] << 8) |
-                    ((u32)in[2] << 16) | (((u32)in[3]) << 24);
+    *((u32 *)out) = (u32)in[0] | ((u32)in[1] << 8) | ((u32)in[2] << 16) | (((u32)in[3]) << 24);
   else if (!is_store && width == 8)
-    *((u64 *)out) = (u64)in[0] | ((u64)in[1] << 8) |
-                    ((u64)in[2] << 16) | ((u64)in[3] << 24) |
-                    ((u64)in[4] << 32) | ((u64)in[5] << 40) |
-                    ((u64)in[6] << 48) | ((u64)in[7] << 56);
+    *((u64 *)out) = (u64)in[0] | ((u64)in[1] << 8) | ((u64)in[2] << 16) | ((u64)in[3] << 24) | ((u64)in[4] << 32) |
+                    ((u64)in[5] << 40) | ((u64)in[6] << 48) | ((u64)in[7] << 56);
   else if (width == 1)
     out[0] = *in;
   else if (width == 2)
     out[0] = *(u16 *)in >> 0 & 0xFF, out[1] = (*(u16 *)in >> 8);
   else if (width == 4)
-    out[0] = *(u32 *)in >> 0 & 0xFF, out[1] = *(u32 *)in >> 8 & 0xFF,
-        out[2] = *(u32 *)in >> 16 & 0xFF, out[3] = *(u32 *)in >> 24 & 0xFF;
+    out[0] = *(u32 *)in >> 0 & 0xFF, out[1] = *(u32 *)in >> 8 & 0xFF, out[2] = *(u32 *)in >> 16 & 0xFF,
+    out[3] = *(u32 *)in >> 24 & 0xFF;
   else /* width == 8 */
-    out[0] = *(u64 *)in >> 0 & 0xFF, out[1] = *(u64 *)in >> 8 & 0xFF,
-        out[2] = *(u64 *)in >> 16 & 0xFF, out[3] = *(u64 *)in >> 24 & 0xFF,
-        out[4] = *(u64 *)in >> 32 & 0xFF, out[5] = *(u64 *)in >> 40 & 0xFF,
-        out[6] = *(u64 *)in >> 48 & 0xFF, out[7] = *(u64 *)in >> 56 & 0xFF;
+    out[0] = *(u64 *)in >> 0 & 0xFF, out[1] = *(u64 *)in >> 8 & 0xFF, out[2] = *(u64 *)in >> 16 & 0xFF,
+    out[3] = *(u64 *)in >> 24 & 0xFF, out[4] = *(u64 *)in >> 32 & 0xFF, out[5] = *(u64 *)in >> 40 & 0xFF,
+    out[6] = *(u64 *)in >> 48 & 0xFF, out[7] = *(u64 *)in >> 56 & 0xFF;
 }
 
 /* perform a bus access. access == RV_AW stores data. */
-static u32 rv_bus(rv *cpu, u32 *va, u8 *data, u32 width,
-                  rv_access access) {
+static u32 rv_bus(rv *cpu, u32 *va, u8 *data, u32 width, rv_access access) {
   u32 err, pa /* physical address */;
   u8 ledata[4];
   rv_endcvt(data, ledata, width, 1);
-  if (*va & (width - 1))
-    return RV_BAD_ALIGN;
-  if ((err = rv_vmm(cpu, *va, &pa, access)))
-    return err; /* page or access fault */
+  if (*va & (width - 1)) return RV_BAD_ALIGN;
+  if ((err = rv_vmm(cpu, *va, &pa, access))) return err; /* page or access fault */
   if (((pa + width - 1) ^ pa) & ~0xFFFU) /* page bound overrun */ {
     u32 w0 /* load this many bytes from 1st page */ = 0x1000 - (*va & 0xFFF);
-    if ((err = bus_error_to_rv_res(mach_bus(cpu->mach, pa, ledata, access == RV_AW, w0))) != RV_OK)
-      return err;
+    if ((err = bus_error_to_rv_res(mach_bus(cpu->mach, pa, ledata, access == RV_AW, w0))) != RV_OK) return err;
     width -= w0, *va += w0, data += w0;
-    if ((err = rv_vmm(cpu, *va, &pa, RV_AW)))
-      return err;
+    if ((err = rv_vmm(cpu, *va, &pa, RV_AW))) return err;
   }
-  if ((err = bus_error_to_rv_res(mach_bus(cpu->mach, pa, ledata, access == RV_AW, width))) != RV_OK)
-    return err;
+  if ((err = bus_error_to_rv_res(mach_bus(cpu->mach, pa, ledata, access == RV_AW, width))) != RV_OK) return err;
   rv_endcvt(ledata, data, width, 0);
   return 0;
 }
@@ -554,8 +600,7 @@ static u32 rv_if(rv *cpu, u32 *i, u32 *tval) {
     goto error;
   cpu->next_pc = cpu->pc + rv_isz(*i);
   *tval = *i; /* tval is original inst for illegal instruction traps */
-  if (rv_isz(*i) < 4)
-    *i = rvc(*i & 0xFFFF);
+  if (rv_isz(*i) < 4) *i = rvc(*i & 0xFFFF);
   return RV_OK;
 error:
   *tval = pc; /* tval is pc for instruction {page}fault traps */
@@ -571,11 +616,9 @@ static u32 rv_service(rv *cpu) {
   u32 iidx /* interrupt number */, d /* delegated privilege */;
   for (iidx = 12; iidx > 0; iidx--) {
     /* highest -> lowest priority */
-    if (!(cpu->csr.mip & cpu->csr.mie & (1 << iidx)))
-      continue; /* interrupt not triggered or not enabled */
+    if (!(cpu->csr.mip & cpu->csr.mie & (1 << iidx))) continue; /* interrupt not triggered or not enabled */
     d = (cpu->csr.mideleg & (1 << iidx)) ? RV_PSUPER : RV_PMACH;
-    if (d == cpu->priv ? rv_b(cpu->csr.mstatus, d) : (d > cpu->priv))
-      return rv_trap(cpu, 0x80000000U + iidx, cpu->pc);
+    if (d == cpu->priv ? rv_b(cpu->csr.mstatus, d) : (d > cpu->priv)) return rv_trap(cpu, 0x80000000U + iidx, cpu->pc);
   }
   return RV_TRAP_NONE;
 }
@@ -584,48 +627,18 @@ static u32 rv_service(rv *cpu) {
 u32 rv_step(rv *cpu) {
   u32 i, tval, err = rv_if(cpu, &i, &tval); /* fetch instruction into i */
 
-  /* Track if we're in a tight loop */
-  static u32 last_pc = 0;
-  static int same_pc_count = 0;
-  static u32 loop_locations[5] = {0};
-  static int loop_idx = 0;
-
-  if (cpu->pc == last_pc) {
-    if (++same_pc_count == 1000) {
-      same_pc_count = 0;
-    }
-  } else {
-    last_pc = cpu->pc;
-    same_pc_count = 0;
-
-    /* Track short loops */
-    for (int j = 0; j < 5; j++) {
-      if (loop_locations[j] == cpu->pc) {
-        break;
-      }
-    }
-    loop_locations[loop_idx] = cpu->pc;
-    loop_idx = (loop_idx + 1) % 5;
-  }
-
-  if (!++cpu->csr.cycle)
-    cpu->csr.cycleh++; /* add to cycle,cycleh with carry */
-  if (err)
-    return rv_trap_bus(cpu, err, tval, RV_AX); /* instruction fetch error */
-  if (rv_isz(i) != 4)
-    return rv_trap(cpu, RV_EILL, tval); /* instruction length invalid */
+  if (!++cpu->csr.cycle) cpu->csr.cycleh++;               /* add to cycle,cycleh with carry */
+  if (err) return rv_trap_bus(cpu, err, tval, RV_AX);     /* instruction fetch error */
+  if (rv_isz(i) != 4) return rv_trap(cpu, RV_EILL, tval); /* instruction length invalid */
   if (rv_iopl(i) == 0) {
     if (rv_ioph(i) == 0) {
       /*Q 00/000: LOAD */
       u32 va /* virtual address */ = rv_lr(cpu, rv_irs1(i)) + rv_iimm_i(i);
       u32 v /* loaded value */ = 0, w /* value width */, sx /* sign ext. */;
       w = 1 << (rv_if3(i) & 3), sx = ~rv_if3(i) & 4; /*I lb, lh, lw, lbu, lhu */
-      if ((err = rv_bus(cpu, &va, (u8 *)&v, w, RV_AR)))
-        return rv_trap_bus(cpu, err, va, RV_AR);
-      if ((rv_if3(i) & 3) == 3)
-        return rv_trap(cpu, RV_EILL, tval); /* ld instruction not supported */
-      if (sx)
-        v = rv_signext(v, (w * 8 - 1));
+      if ((err = rv_bus(cpu, &va, (u8 *)&v, w, RV_AR))) return rv_trap_bus(cpu, err, va, RV_AR);
+      if ((rv_if3(i) & 3) == 3) return rv_trap(cpu, RV_EILL, tval); /* ld instruction not supported */
+      if (sx) v = rv_signext(v, (w * 8 - 1));
       rv_sr(cpu, rv_ird(i), v);
     } else if (rv_ioph(i) == 1) {
       /*Q 01/000: STORE */
@@ -634,8 +647,7 @@ u32 rv_step(rv *cpu) {
       u32 y /* stored value */ = rv_lr(cpu, rv_irs2(i));
       if (rv_if3(i) > 2)                    /*I sb, sh, sw */
         return rv_trap(cpu, RV_EILL, tval); /* sd instruction not supported */
-      if ((err = rv_bus(cpu, &va, (u8 *)&y, w, RV_AW)))
-        return rv_trap_bus(cpu, err, va, RV_AW);
+      if ((err = rv_bus(cpu, &va, (u8 *)&y, w, RV_AW))) return rv_trap_bus(cpu, err, va, RV_AW);
     } else if (rv_ioph(i) == 3) {
       /*Q 11/000: BRANCH */
       u32 a = rv_lr(cpu, rv_irs1(i)), b = rv_lr(cpu, rv_irs2(i));
@@ -669,8 +681,7 @@ u32 rv_step(rv *cpu) {
       if (rv_if3(i) == 0) {
         /*I fence */
         u32 fm = rv_bf(i, 31, 28); /* extract fm field */
-        if (fm && fm != 8)
-          return rv_trap(cpu, RV_EILL, tval);
+        if (fm && fm != 8) return rv_trap(cpu, RV_EILL, tval);
       } else if (rv_if3(i) == 1) {
         /*I fence.i */
       } else
@@ -685,8 +696,7 @@ u32 rv_step(rv *cpu) {
         /* width must be 2 */
         return rv_trap(cpu, RV_EILL, tval);
       } else {
-        if (l && (err = rv_bus(cpu, &va, (u8 *)&x, 4, RV_AR)))
-          return rv_trap_bus(cpu, err, va, RV_AR);
+        if (l && (err = rv_bus(cpu, &va, (u8 *)&x, 4, RV_AR))) return rv_trap_bus(cpu, err, va, RV_AR);
         if (rv_if5(i) == 0) /*I amoadd.w */
           y = x + b;
         else if (rv_if5(i) == 1) /*I amoswap.w */
@@ -711,8 +721,7 @@ u32 rv_step(rv *cpu) {
           y = (x - b) <= x ? x : b;
         else
           return rv_trap(cpu, RV_EILL, tval);
-        if (s && (err = rv_bus(cpu, &va, (u8 *)&y, 4, RV_AW)))
-          return rv_trap_bus(cpu, err, va, RV_AW);
+        if (s && (err = rv_bus(cpu, &va, (u8 *)&y, 4, RV_AW))) return rv_trap_bus(cpu, err, va, RV_AW);
       }
       rv_sr(cpu, rv_ird(i), x);
     } else if (rv_ioph(i) == 3) {
@@ -726,15 +735,13 @@ u32 rv_step(rv *cpu) {
     if (rv_ioph(i) == 0 || /*Q 00/100: OP-IMM */
         rv_ioph(i) == 1) {
       /*Q 01/100: OP */
-      u32 a = rv_lr(cpu, rv_irs1(i)),
-          b = rv_ioph(i) ? rv_lr(cpu, rv_irs2(i)) : rv_iimm_i(i),
-          s /* alt. ALU op */ = (rv_ioph(i) || rv_if3(i)) ? rv_b(i, 30) : 0,
-          y /* result */, sh /* shift amount */ = b & 0x1F;
+      u32 a = rv_lr(cpu, rv_irs1(i)), b = rv_ioph(i) ? rv_lr(cpu, rv_irs2(i)) : rv_iimm_i(i),
+          s /* alt. ALU op */ = (rv_ioph(i) || rv_if3(i)) ? rv_b(i, 30) : 0, y /* result */,
+          sh /* shift amount */ = b & 0x1F;
       if (!rv_ioph(i) || !rv_b(i, 25)) {
         if (rv_if3(i) == 0)      /*I add, addi, sub */
           y = s ? a - b : a + b; /* subtract if alt. op, otherwise add */
-        else if ((rv_if3(i) == 5 || rv_if3(i) == 1) && b >> 5 & 0x5F &&
-                 !rv_ioph(i))
+        else if ((rv_if3(i) == 5 || rv_if3(i) == 1) && b >> 5 & 0x5F && !rv_ioph(i))
           return rv_trap(cpu, RV_EILL, tval); /* shift too big! */
         else if (rv_if3(i) == 1)              /*I sll, slli */
           y = a << sh;
@@ -786,8 +793,7 @@ u32 rv_step(rv *cpu) {
           /* perform CSR load */
           if (rv_csr_bus(cpu, csr, 0, &y)) /* load CSR into y */
             return rv_trap(cpu, RV_EILL, tval);
-          if (rv_ird(i))
-            rv_sr(cpu, rv_ird(i), y); /* store y into rd */
+          if (rv_ird(i)) rv_sr(cpu, rv_ird(i), y); /* store y into rd */
         }
         if (rv_csr_bus(cpu, csr, 1, &s)) /* set CSR to s */
           return rv_trap(cpu, RV_EILL, tval);
@@ -807,8 +813,7 @@ u32 rv_step(rv *cpu) {
           return rv_trap(cpu, RV_EILL, tval);
       } else if (!rv_if3(i)) {
         if (!rv_ird(i)) {
-          if (!rv_irs1(i) && rv_irs2(i) == 2 &&
-              (rv_if7(i) == 8 || rv_if7(i) == 24)) {
+          if (!rv_irs1(i) && rv_irs2(i) == 2 && (rv_if7(i) == 8 || rv_if7(i) == 24)) {
             /*I mret, sret */
             u32 xp /* instruction privilege */ = rv_if7(i) >> 3;
             u32 yp /* previous (incoming) privilege [either mpp or spp] */ =
@@ -816,16 +821,14 @@ u32 rv_step(rv *cpu) {
             u32 xpie /* previous ie bit */ = rv_b(cpu->csr.mstatus, 4 + xp);
             u32 mprv /* modify privilege */ = rv_b(cpu->csr.mstatus, 17);
             if (rv_b(cpu->csr.mstatus, 22) && xp == RV_PSUPER)
-              return rv_trap(cpu, RV_EILL, tval); /* exception if tsr=1 */
-            mprv *= yp == RV_PMACH;               /* if y != m, mprv' = 0 */
-            cpu->csr.mstatus &=
-                xp == RV_PMACH
-                  ? 0xFFFDE777             /* {mpp, mie, mpie, mprv} <- 0 */
-                  : 0xFFFDFEDD;            /* {spp, sie, spie, mprv} <- 0 */
-            cpu->csr.mstatus |= xpie << xp /* xie <- xpie */
-                | 1 << (4 + xp)            /* xpie <- 1 */
-                | mprv << 17;              /* mprv <- mprv' */
-            cpu->priv = yp;                /* priv <- y */
+              return rv_trap(cpu, RV_EILL, tval);            /* exception if tsr=1 */
+            mprv *= yp == RV_PMACH;                          /* if y != m, mprv' = 0 */
+            cpu->csr.mstatus &= xp == RV_PMACH ? 0xFFFDE777  /* {mpp, mie, mpie, mprv} <- 0 */
+                                               : 0xFFFDFEDD; /* {spp, sie, spie, mprv} <- 0 */
+            cpu->csr.mstatus |= xpie << xp                   /* xie <- xpie */
+                                | 1 << (4 + xp)              /* xpie <- 1 */
+                                | mprv << 17;                /* mprv <- mprv' */
+            cpu->priv = yp;                                  /* priv <- y */
             cpu->next_pc = xp == RV_PMACH ? cpu->csr.mepc : cpu->csr.sepc;
           } else if (rv_irs2(i) == 5 && rv_if7(i) == 8) {
             /*I wfi */
@@ -833,13 +836,20 @@ u32 rv_step(rv *cpu) {
             return (err = rv_service(cpu)) == RV_TRAP_NONE ? RV_TRAP_WFI : err;
           } else if (rv_if7(i) == 9) {
             /*I sfence.vma */
-            if (cpu->priv == RV_PSUPER && (cpu->csr.mstatus & (1 << 20)))
-              return rv_trap(cpu, RV_EILL, tval);
+            if (cpu->priv == RV_PSUPER && (cpu->csr.mstatus & (1 << 20))) return rv_trap(cpu, RV_EILL, tval);
             /* Invalidate all TLB entries */
-            for (u32 s = 0; s < RV_TLB_SETS; s++) {
-              for (u32 w = 0; w < RV_TLB_WAYS; w++) {
-                cpu->tlb[s][w].valid = 0;
+            for (u32 s = 0; s < RV_ITLB_SETS; s++) {
+              for (u32 w = 0; w < RV_ITLB_WAYS; w++) {
+                cpu->itlb[s][w].valid = 0;
               }
+            }
+            for (u32 s = 0; s < RV_DTLB_SETS; s++) {
+              for (u32 w = 0; w < RV_DTLB_WAYS; w++) {
+                cpu->dtlb[s][w].valid = 0;
+              }
+            }
+            for (u32 i = 0; i < RV_STLB_ENTRIES; i++) {
+              cpu->stlb[i].valid = 0;
             }
           } else if (!rv_irs1(i) && !rv_irs2(i) && !rv_if7(i)) {
             /*I ecall */
@@ -866,8 +876,7 @@ u32 rv_step(rv *cpu) {
   } else
     return rv_trap(cpu, RV_EILL, tval);
   cpu->pc = cpu->next_pc;
-  if (cpu->csr.mip && (err = rv_service(cpu)) != RV_TRAP_NONE)
-    return err;
+  if (cpu->csr.mip && (err = rv_service(cpu)) != RV_TRAP_NONE) return err;
   return RV_TRAP_NONE; /* reserved code -- no exception */
 }
 
